@@ -43,13 +43,13 @@ const getEnvOrFallback = (envName: string, fallback: string): string => {
 };
 
 const DEFAULT_FIREBASE_CONFIG: FirebaseConfigType = {
-  apiKey: getEnvOrFallback("VITE_FIREBASE_API_KEY", configObj.apiKey || "AIzaSyD6QuJJ5RMbClgqzZVkagSALeZhkfWpBaw"),
-  authDomain: getEnvOrFallback("VITE_FIREBASE_AUTH_DOMAIN", configObj.authDomain || "sisteminformasipariwisatapct.firebaseapp.com"),
-  projectId: getEnvOrFallback("VITE_FIREBASE_PROJECT_ID", configObj.projectId || "sisteminformasipariwisatapct"),
-  storageBucket: getEnvOrFallback("VITE_FIREBASE_STORAGE_BUCKET", configObj.storageBucket || "sisteminformasipariwisatapct.firebasestorage.app"),
-  messagingSenderId: getEnvOrFallback("VITE_FIREBASE_MESSAGING_SENDER_ID", configObj.messagingSenderId || "17617438203"),
-  appId: getEnvOrFallback("VITE_FIREBASE_APP_ID", configObj.appId || "1:17617438203:web:f184358361423abd2ef75e"),
-  measurementId: getEnvOrFallback("VITE_FIREBASE_MEASUREMENT_ID", configObj.measurementId || "G-G5KC7Z1VHQ")
+  apiKey: cleanEnvVar(configObj.apiKey) || getEnvOrFallback("VITE_FIREBASE_API_KEY", "AIzaSyD6QuJJ5RMbClgqzZVkagSALeZhkfWpBaw"),
+  authDomain: cleanEnvVar(configObj.authDomain) || getEnvOrFallback("VITE_FIREBASE_AUTH_DOMAIN", "sisteminformasipariwisatapct.firebaseapp.com"),
+  projectId: cleanEnvVar(configObj.projectId) || getEnvOrFallback("VITE_FIREBASE_PROJECT_ID", "sisteminformasipariwisatapct"),
+  storageBucket: cleanEnvVar(configObj.storageBucket) || getEnvOrFallback("VITE_FIREBASE_STORAGE_BUCKET", "sisteminformasipariwisatapct.firebasestorage.app"),
+  messagingSenderId: cleanEnvVar(configObj.messagingSenderId) || getEnvOrFallback("VITE_FIREBASE_MESSAGING_SENDER_ID", "17617438203"),
+  appId: cleanEnvVar(configObj.appId) || getEnvOrFallback("VITE_FIREBASE_APP_ID", "1:17617438203:web:f184358361423abd2ef75e"),
+  measurementId: cleanEnvVar(configObj.measurementId) || getEnvOrFallback("VITE_FIREBASE_MEASUREMENT_ID", "G-G5KC7Z1VHQ")
 };
 
 const databaseId = configObj.firestoreDatabaseId || "(default)";
@@ -84,6 +84,14 @@ export const isValidApiKey = (key: string): boolean => {
 
 export const initFirebaseConnector = (customCfg?: FirebaseConfigType) => {
   const cfg = customCfg || getActiveFirebaseConfig();
+  
+  // Safe console log to help verify that the correct app config is active in client console
+  console.log("[Firebase Init Debug] Active Config:", {
+    projectId: cfg.projectId,
+    apiKeyMasked: cfg.apiKey ? `${cfg.apiKey.substring(0, 8)}...${cfg.apiKey.substring(cfg.apiKey.length - 4)}` : "none",
+    authDomain: cfg.authDomain
+  });
+
   if (!isValidApiKey(cfg.apiKey)) {
     console.warn("Firebase API Key is missing or default. Firebase auth & firestore running in safe fallback mode.");
     app = null;
