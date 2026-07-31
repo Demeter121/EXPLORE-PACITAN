@@ -109,6 +109,9 @@ export const initFirebaseConnector = (customCfg?: FirebaseConfigType) => {
     googleProvider = new GoogleAuthProvider();
     
     // Safely initialize analytics in supported client environments
+    // Note: Disabled by default because the API key is restricted to Auth & Firestore.
+    // Initializing getAnalytics(app) triggers background Installations API calls that return 400 INVALID_ARGUMENT.
+    /*
     if (typeof window !== "undefined") {
       isSupported().then((supported) => {
         if (supported && app) {
@@ -118,6 +121,7 @@ export const initFirebaseConnector = (customCfg?: FirebaseConfigType) => {
         console.warn("Analytics not supported in this environment:", e);
       });
     }
+    */
 
     return true;
   } catch (err) {
