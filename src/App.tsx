@@ -329,8 +329,17 @@ export default function App() {
 
   // Monitor Google Authentication State via Firebase
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
+        const userEmail = (user.email || "").trim().toLowerCase();
+        
+        // Validasi: Tolak jika bukan @gmail.com
+        if (!userEmail.endsWith("@gmail.com")) {
+          console.warn(`[Auth Log] Deteksi sesi persisten dengan domain tidak valid, akses ditolak untuk: ${userEmail}`);
+          await signOut(auth);
+          return;
+        }
+
         const showToast = isManualLoginRef.current;
         isManualLoginRef.current = false; // Reset the manual flag
 
@@ -364,6 +373,19 @@ export default function App() {
       isManualLoginRef.current = true;
       const result = await signInWithPopup(auth, googleProvider);
       if (result && result.user) {
+        const userEmail = (result.user.email || "").trim().toLowerCase();
+        
+        // Buatkan log upaya login
+        console.log(`[Auth Log] Otorisasi Google Login diterima dari akun: ${userEmail}`);
+        
+        // Validasi: Wajib berakhiran @gmail.com
+        if (!userEmail.endsWith("@gmail.com")) {
+          console.warn(`[Auth Log] Akses ditolak: Akun ${userEmail} tidak menggunakan domain @gmail.com.`);
+          triggerToast("Gagal masuk! Hanya akun dengan domain @gmail.com yang diizinkan.", "error");
+          await signOut(auth);
+          return;
+        }
+
         // Await the correct upsert and synchronization process
         await processGoogleUser(
           result.user.email || "",
