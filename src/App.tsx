@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { HashRouter as Router, Routes, Route, Link, useNavigate, useParams, Navigate, useLocation } from "react-router-dom";
 import { 
@@ -171,6 +171,9 @@ export default function App() {
   const [realGoogleUser, setRealGoogleUser] = useState<User | null>(null);
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" | "info" } | null>(null);
 
+  const authProcessingRef = useRef<string | null>(null);
+  const isManualLoginRef = useRef<boolean>(false);
+
   // Initialize two-way Firestore synchronization
   useFirestoreSync({
     locations,
@@ -202,124 +205,30 @@ export default function App() {
     }
   }, [currentUser?.id, currentUser?.role, currentUser?.email, currentUser?.name]);
 
-  // Monitor Google Authentication State via Firebase
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      if (user) {
-        const cleanEmail = (user.email || "").trim().toLowerCase();
-
-        // Perform async Firestore operations
-        (async () => {
-          let firestoreUser: User | null = null;
-          try {
-            if (db) {
-              const userDocRef = doc(db, "users", user.uid);
-              const userSnapshot = await getDoc(userDocRef);
-              
-              if (userSnapshot.exists()) {
-                firestoreUser = userSnapshot.data() as User;
-                
-                // Enforce admin role in Firestore
-                if (cleanEmail === "ivanfadhilamaulana1@gmail.com" || user.uid === "21oQqjjDX0Xfs0ddKRsVJlsxGqm1") {
-                  if (firestoreUser.role !== "admin") {
-                    firestoreUser.role = "admin";
-                    await setDoc(userDocRef, { ...firestoreUser, role: "admin" }, { merge: true });
-                  }
-                }
-              } else {
-                // New user - create document at /users/{uid}
-                const defaultRole: UserRole = (cleanEmail === "ivanfadhilamaulana1@gmail.com" || user.uid === "21oQqjjDX0Xfs0ddKRsVJlsxGqm1") ? "admin" : "user";
-                const newUserDoc: User = {
-                  id: user.uid,
-                  name: user.displayName || user.email?.split("@")[0] || "Pengguna Baru",
-                  email: user.email || "",
-                  role: defaultRole,
-                  avatarUrl: user.photoURL || `https://api.dicebear.com/7.x/adventurer/svg?seed=${user.uid}`,
-                  managedLocations: []
-                };
-                await setDoc(userDocRef, newUserDoc);
-                firestoreUser = newUserDoc;
-              }
-            }
-          } catch (e) {
-            console.error("Firestore error in onAuthStateChanged:", e);
-          }
-
-          const registeredUsers = LocalDB.getUsers();
-          const isIvanAdmin = isDefaultAdminUtama(cleanEmail, user.displayName || "", user.uid || "");
-          const isKoor = isDefaultKoordinatorPengelola(cleanEmail, user.displayName || "", user.uid || "");
-          const isMitra = isDefaultMitraPengelola(cleanEmail, user.displayName || "", user.uid || "");
-          const isWst = isDefaultWisatawan(cleanEmail, user.displayName || "", user.uid || "");
-
-          const existingUserIndex = registeredUsers.findIndex(
-            u => (user.uid && u.id === user.uid) || 
-                 (u.email && u.email.toLowerCase() === cleanEmail) || 
-                 (isIvanAdmin && u.id === "usr_admin") ||
-                 (isKoor && u.id === "usr_mgr_koor") ||
-                 (isMitra && u.id === "usr_mgr_1") ||
-                 (isWst && u.id === "usr_wst_1")
-          );
-          const existingUser = existingUserIndex >= 0 ? registeredUsers[existingUserIndex] : null;
-
-          let finalUser: User;
-          if (firestoreUser) {
-            finalUser = {
-              ...firestoreUser,
-              id: user.uid
-            };
-          } else {
-            const rawUser: User = {
-              id: existingUser ? existingUser.id : user.uid,
-              name: user.displayName || existingUser?.name || user.email || "Google User",
-              email: user.email || cleanEmail || "",
-              role: (cleanEmail === "ivanfadhilamaulana1@gmail.com") ? "admin" : (existingUser ? existingUser.role : "user"),
-              avatarUrl: user.photoURL || existingUser?.avatarUrl || `https://api.dicebear.com/7.x/adventurer/svg?seed=${user.uid}`,
-              managedLocations: existingUser?.managedLocations || []
-            };
-            finalUser = enforceDefaultAccount(rawUser);
-          }
-
-          if (cleanEmail === "ivanfadhilamaulana1@gmail.com" || user.uid === "21oQqjjDX0Xfs0ddKRsVJlsxGqm1") {
-            finalUser.role = "admin";
-            finalUser.id = user.uid || "21oQqjjDX0Xfs0ddKRsVJlsxGqm1";
-            if (!finalUser.email) finalUser.email = "ivanfadhilamaulana1@gmail.com";
-            if (!finalUser.name || finalUser.name === "Ivan") finalUser.name = "Ivan Fadhila (Admin Utama)";
-          }
-
-          let updatedUsers: User[];
-          if (existingUserIndex >= 0) {
-            updatedUsers = [...registeredUsers];
-            updatedUsers[existingUserIndex] = finalUser;
-          } else {
-            updatedUsers = [...registeredUsers, finalUser];
-          }
-
-          const clean = LocalDB.saveUsers(updatedUsers);
-          setUsers(clean);
-          setRealGoogleUser(finalUser);
-          setCurrentUser(finalUser);
-          LocalDB.saveCurrentUser(finalUser);
-        })();
-      } else {
-        setRealGoogleUser(null);
-        // Reset the session to Guest if the user is unauthenticated but has a stale admin session locally
-        const savedUser = LocalDB.getCurrentUser();
-        if (savedUser && savedUser.email === "ivanfadhilamaulana1@gmail.com") {
-          setCurrentUser(EMPTY_GUEST_USER);
-          LocalDB.saveCurrentUser(EMPTY_GUEST_USER);
-        }
-      }
-    });
-    return () => unsubscribe();
-  }, []);
-
   // Helper to process and persist Google User login
-  const processGoogleUser = async (email: string, name?: string, uid?: string, photoUrl?: string, roleOverride?: UserRole) => {
-    const registeredUsers = LocalDB.getUsers();
-    const cleanEmail = (email || "").trim().toLowerCase();
+  const processGoogleUser = async (
+    email: string,
+    name?: string,
+    uid?: string,
+    photoUrl?: string,
+    roleOverride?: UserRole,
+    showToast = true
+  ) => {
+    if (!uid) return;
 
-    let firestoreUser: User | null = null;
-    if (uid) {
+    // De-duplicate concurrent auth synchronization ticks for the same user
+    if (authProcessingRef.current === uid) {
+      console.log("[Auth Debug] Already processing user:", uid, "- skipping duplicate invocation.");
+      return;
+    }
+
+    authProcessingRef.current = uid;
+
+    try {
+      const registeredUsers = LocalDB.getUsers();
+      const cleanEmail = (email || "").trim().toLowerCase();
+
+      let firestoreUser: User | null = null;
       try {
         if (db) {
           const userDocRef = doc(db, "users", uid);
@@ -353,81 +262,120 @@ export default function App() {
       } catch (e) {
         console.error("Firestore error in processGoogleUser:", e);
       }
-    }
 
-    const isIvanAdmin = isDefaultAdminUtama(cleanEmail, name || "", uid || "");
-    const isKoor = isDefaultKoordinatorPengelola(cleanEmail, name || "", uid || "");
-    const isMitra = isDefaultMitraPengelola(cleanEmail, name || "", uid || "");
-    const isWst = isDefaultWisatawan(cleanEmail, name || "", uid || "");
+      const isIvanAdmin = isDefaultAdminUtama(cleanEmail, name || "", uid || "");
+      const isKoor = isDefaultKoordinatorPengelola(cleanEmail, name || "", uid || "");
+      const isMitra = isDefaultMitraPengelola(cleanEmail, name || "", uid || "");
+      const isWst = isDefaultWisatawan(cleanEmail, name || "", uid || "");
 
-    const existingUserIndex = registeredUsers.findIndex(
-      u => (uid && u.id === uid) || 
-           (u.email && u.email.toLowerCase() === cleanEmail) || 
-           (isIvanAdmin && u.id === "usr_admin") ||
-           (isKoor && u.id === "usr_mgr_koor") ||
-           (isMitra && u.id === "usr_mgr_1") ||
-           (isWst && u.id === "usr_wst_1")
-    );
-    const existingUser = existingUserIndex >= 0 ? registeredUsers[existingUserIndex] : null;
+      const existingUserIndex = registeredUsers.findIndex(
+        u => (uid && u.id === uid) || 
+             (u.email && u.email.toLowerCase() === cleanEmail) || 
+             (isIvanAdmin && u.id === "usr_admin") ||
+             (isKoor && u.id === "usr_mgr_koor") ||
+             (isMitra && u.id === "usr_mgr_1") ||
+             (isWst && u.id === "usr_wst_1")
+      );
+      const existingUser = existingUserIndex >= 0 ? registeredUsers[existingUserIndex] : null;
 
-    let finalUser: User;
-    if (firestoreUser) {
-      finalUser = {
-        ...firestoreUser,
-        id: uid || firestoreUser.id
-      };
-    } else {
-      const rawUser: User = {
-        id: existingUser ? existingUser.id : (uid || `google_${Date.now()}`),
-        name: (name || "").trim() || existingUser?.name || cleanEmail.split("@")[0].replace(/[._-]/g, " ").replace(/\b\w/g, c => c.toUpperCase()) || "Pengguna Google",
-        email: cleanEmail,
-        role: existingUser ? existingUser.role : (roleOverride || "user"),
-        avatarUrl: photoUrl || existingUser?.avatarUrl || `https://api.dicebear.com/7.x/adventurer/svg?seed=${uid || cleanEmail}`,
-        managedLocations: existingUser?.managedLocations || []
-      };
-      finalUser = enforceDefaultAccount(rawUser);
-    }
-
-    if (cleanEmail === "ivanfadhilamaulana1@gmail.com" || (uid && uid === "21oQqjjDX0Xfs0ddKRsVJlsxGqm1")) {
-      finalUser.role = "admin";
-      if (!finalUser.email) finalUser.email = "ivanfadhilamaulana1@gmail.com";
-      if (!finalUser.name || finalUser.name === "Ivan") finalUser.name = "Ivan Fadhila (Admin Utama)";
-      if (uid) {
-        finalUser.id = uid;
+      let finalUser: User;
+      if (firestoreUser) {
+        finalUser = {
+          ...firestoreUser,
+          id: uid || firestoreUser.id
+        };
+      } else {
+        const rawUser: User = {
+          id: existingUser ? existingUser.id : (uid || `google_${Date.now()}`),
+          name: (name || "").trim() || existingUser?.name || cleanEmail.split("@")[0].replace(/[._-]/g, " ").replace(/\b\w/g, c => c.toUpperCase()) || "Pengguna Google",
+          email: cleanEmail,
+          role: existingUser ? existingUser.role : (roleOverride || "user"),
+          avatarUrl: photoUrl || existingUser?.avatarUrl || `https://api.dicebear.com/7.x/adventurer/svg?seed=${uid || cleanEmail}`,
+          managedLocations: existingUser?.managedLocations || []
+        };
+        finalUser = enforceDefaultAccount(rawUser);
       }
-    }
 
-    let updatedUsers: User[];
-    if (existingUserIndex >= 0) {
-      updatedUsers = [...registeredUsers];
-      updatedUsers[existingUserIndex] = finalUser;
-    } else {
-      updatedUsers = [...registeredUsers, finalUser];
-    }
+      if (cleanEmail === "ivanfadhilamaulana1@gmail.com" || (uid && uid === "21oQqjjDX0Xfs0ddKRsVJlsxGqm1")) {
+        finalUser.role = "admin";
+        if (!finalUser.email) finalUser.email = "ivanfadhilamaulana1@gmail.com";
+        if (!finalUser.name || finalUser.name === "Ivan") finalUser.name = "Ivan Fadhila (Admin Utama)";
+        if (uid) {
+          finalUser.id = uid;
+        }
+      }
 
-    const clean = LocalDB.saveUsers(updatedUsers);
-    setUsers(clean);
-    setRealGoogleUser(finalUser);
-    setCurrentUser(finalUser);
-    LocalDB.saveCurrentUser(finalUser);
-    triggerToast(`Selamat datang, ${finalUser.name}! (Login Google)`, "success");
+      let updatedUsers: User[];
+      if (existingUserIndex >= 0) {
+        updatedUsers = [...registeredUsers];
+        updatedUsers[existingUserIndex] = finalUser;
+      } else {
+        updatedUsers = [...registeredUsers, finalUser];
+      }
+
+      const clean = LocalDB.saveUsers(updatedUsers);
+      setUsers(clean);
+      setRealGoogleUser(finalUser);
+      setCurrentUser(finalUser);
+      LocalDB.saveCurrentUser(finalUser);
+
+      if (showToast) {
+        triggerToast(`Selamat datang, ${finalUser.name}! (Login Google)`, "success");
+      }
+    } finally {
+      authProcessingRef.current = null;
+    }
   };
+
+  // Monitor Google Authentication State via Firebase
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (user) {
+        const showToast = isManualLoginRef.current;
+        isManualLoginRef.current = false; // Reset the manual flag
+
+        // Delegate to the shared helper to ensure Firestore is correctly upserted before setting state
+        processGoogleUser(
+          user.email || "",
+          user.displayName || undefined,
+          user.uid,
+          user.photoURL || undefined,
+          undefined,
+          showToast
+        );
+      } else {
+        setRealGoogleUser(null);
+        // Reset the session to Guest if the user is unauthenticated but has a stale admin session locally
+        const savedUser = LocalDB.getCurrentUser();
+        if (savedUser && savedUser.email === "ivanfadhilamaulana1@gmail.com") {
+          setCurrentUser(EMPTY_GUEST_USER);
+          LocalDB.saveCurrentUser(EMPTY_GUEST_USER);
+        }
+      }
+    });
+    return () => unsubscribe();
+  }, []);
 
   const handleGoogleLogin = async () => {
     try {
       if (googleProvider && typeof googleProvider.setCustomParameters === "function") {
         googleProvider.setCustomParameters({});
       }
+      isManualLoginRef.current = true;
       const result = await signInWithPopup(auth, googleProvider);
       if (result && result.user) {
-        processGoogleUser(
+        // Await the correct upsert and synchronization process
+        await processGoogleUser(
           result.user.email || "",
           result.user.displayName || result.user.email?.split("@")[0],
           result.user.uid,
-          result.user.photoURL || undefined
+          result.user.photoURL || undefined,
+          undefined,
+          true
         );
       }
     } catch (err: any) {
+      isManualLoginRef.current = false;
       console.warn("Google popup login exception:", err);
       const errCode = err?.code || "";
       const errMsg = err?.message || "";
