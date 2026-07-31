@@ -9,6 +9,7 @@ import {
   Auth
 } from "firebase/auth";
 import { getFirestore, Firestore } from "firebase/firestore";
+import { getAnalytics, isSupported, Analytics } from "firebase/analytics";
 
 import firebaseConfig from "../../firebase-applet-config.json";
 
@@ -19,6 +20,7 @@ export interface FirebaseConfigType {
   storageBucket: string;
   messagingSenderId: string;
   appId: string;
+  measurementId?: string;
 }
 
 const configObj = (firebaseConfig as any) || {};
@@ -29,7 +31,8 @@ const DEFAULT_FIREBASE_CONFIG: FirebaseConfigType = {
   projectId: ((import.meta as any).env?.VITE_FIREBASE_PROJECT_ID) || configObj.projectId || "sisteminformasipariwisatapct",
   storageBucket: ((import.meta as any).env?.VITE_FIREBASE_STORAGE_BUCKET) || configObj.storageBucket || "sisteminformasipariwisatapct.firebasestorage.app",
   messagingSenderId: ((import.meta as any).env?.VITE_FIREBASE_MESSAGING_SENDER_ID) || configObj.messagingSenderId || "17617438203",
-  appId: ((import.meta as any).env?.VITE_FIREBASE_APP_ID) || configObj.appId || "1:17617438203:web:f184358361423abd2ef75e"
+  appId: ((import.meta as any).env?.VITE_FIREBASE_APP_ID) || configObj.appId || "1:17617438203:web:f184358361423abd2ef75e",
+  measurementId: ((import.meta as any).env?.VITE_FIREBASE_MEASUREMENT_ID) || configObj.measurementId || "G-G5KC7Z1VHQ"
 };
 
 const databaseId = configObj.firestoreDatabaseId || "(default)";
@@ -38,6 +41,7 @@ let app: FirebaseApp | null = null;
 let auth: Auth | null = null;
 let db: Firestore | null = null;
 let googleProvider: GoogleAuthProvider | null = null;
+let analytics: Analytics | null = null;
 
 export const getActiveFirebaseConfig = (): FirebaseConfigType => {
   try {
@@ -103,6 +107,18 @@ export const initFirebaseConnector = (customCfg?: FirebaseConfigType) => {
     }
     
     googleProvider = new GoogleAuthProvider();
+    
+    // Safely initialize analytics in supported client environments
+    if (typeof window !== "undefined") {
+      isSupported().then((supported) => {
+        if (supported && app) {
+          analytics = getAnalytics(app);
+        }
+      }).catch((e) => {
+        console.warn("Analytics not supported in this environment:", e);
+      });
+    }
+
     return true;
   } catch (err) {
     console.warn("Firebase Initialization Error handled safely:", err);
@@ -288,6 +304,7 @@ export {
   auth, 
   db, 
   googleProvider, 
+  analytics,
   signInWithGooglePopup as signInWithPopup, 
   safeSignOut as signOut, 
   safeOnAuthStateChanged as onAuthStateChanged 
