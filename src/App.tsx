@@ -744,21 +744,21 @@ function SeoRouteUpdater({ locations }: { locations: Location[] }) {
       <div className="flex flex-col min-h-screen font-sans bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-slate-100 select-none transition-colors duration-200">
         {/* Beautiful Custom Toast Notification */}
         {toast && (
-          <div className="fixed bottom-4 left-4 right-4 sm:left-auto sm:right-5 sm:bottom-5 z-[9999] max-w-[calc(100vw-2rem)] sm:max-w-xs md:max-w-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl sm:rounded-2xl p-3 sm:p-4 shadow-2xl animate-in fade-in slide-in-from-bottom-5 duration-300 flex items-start gap-2.5 sm:gap-3 border-l-[3px] sm:border-l-4 border-l-teal-600">
+          <div className="fixed bottom-4 left-4 right-4 sm:left-auto sm:right-5 sm:bottom-5 z-[9999] max-w-[calc(100vw-2rem)] sm:max-w-xs md:max-w-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl sm:rounded-2xl p-3.5 sm:p-4 shadow-2xl animate-in fade-in slide-in-from-bottom-5 duration-300 flex items-start gap-3 border-l-[3px] sm:border-l-4 border-l-teal-600">
             {toast.type === "success" && (
-              <CheckCircle className="text-emerald-500 flex-shrink-0" size={16} />
+              <CheckCircle className="text-emerald-500 flex-shrink-0 mt-0.5" size={18} />
             )}
             {toast.type === "error" && (
-              <XCircle className="text-rose-500 flex-shrink-0" size={16} />
+              <XCircle className="text-rose-500 flex-shrink-0 mt-0.5" size={18} />
             )}
             {toast.type === "info" && (
-              <AlertCircle className="text-teal-500 flex-shrink-0" size={16} />
+              <AlertCircle className="text-teal-500 flex-shrink-0 mt-0.5" size={18} />
             )}
-            <div className="flex-1 min-w-0">
-              <p className="text-[11px] sm:text-xs font-bold text-slate-900 dark:text-white leading-none">Notifikasi Explore Pacitan</p>
-              <p className="text-[10px] sm:text-xs text-slate-500 dark:text-slate-400 mt-1 leading-normal sm:leading-relaxed font-medium">{toast.message}</p>
+            <div className="flex-1 min-w-0 break-words">
+              <p className="text-sm font-bold text-slate-900 dark:text-white leading-tight">Notifikasi Explore Pacitan</p>
+              <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-1 leading-relaxed font-medium">{toast.message}</p>
             </div>
-            <button onClick={() => setToast(null)} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer text-xs sm:text-sm font-bold shrink-0 -mt-0.5">
+            <button onClick={() => setToast(null)} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer text-sm sm:text-base font-bold shrink-0 p-1 -mt-1 -mr-1">
               ✕
             </button>
           </div>
