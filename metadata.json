@@ -1,0 +1,6 @@
+{
+  "name": "Sistem Informasi Pariwisata Pacitan",
+  "description": "Pengembangan Peta Destinasi Wisata dan Itinerari Berbasis Web untuk Kabupaten Pacitan dengan manajemen usulan lokasi dan moderasi Admin Utama.",
+  "requestFramePermissions": ["geolocation"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

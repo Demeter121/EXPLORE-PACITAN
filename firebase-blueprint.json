@@ -1,0 +1,92 @@
+{
+  "entities": {
+    "locations": {
+      "title": "Locations",
+      "description": "Published tourism destinations in Pacitan",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "category": { "type": "string" },
+        "description": { "type": "string" },
+        "address": { "type": "string" },
+        "lat": { "type": "number" },
+        "lng": { "type": "number" },
+        "status": { "type": "string" }
+      },
+      "rules": {
+        "read": "true",
+        "write": "request.auth != null"
+      }
+    },
+    "submissions": {
+      "title": "Submissions",
+      "description": "Moderation queue for new or edited location proposals",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "category": { "type": "string" },
+        "status": { "type": "string" },
+        "submittedBy": { "type": "string" }
+      },
+      "rules": {
+        "read": "request.auth != null",
+        "write": "request.auth != null"
+      }
+    },
+    "users": {
+      "title": "Users",
+      "description": "User profiles and permissions",
+      "properties": {
+        "id": { "type": "string" },
+        "email": { "type": "string" },
+        "name": { "type": "string" },
+        "role": { "type": "string" }
+      },
+      "rules": {
+        "read": "true",
+        "write": "request.auth != null"
+      }
+    },
+    "reviews": {
+      "title": "Reviews",
+      "description": "Location reviews and ratings",
+      "properties": {
+        "id": { "type": "string" },
+        "locationId": { "type": "string" },
+        "userId": { "type": "string" },
+        "rating": { "type": "number" },
+        "comment": { "type": "string" }
+      },
+      "rules": {
+        "read": "true",
+        "write": "request.auth != null"
+      }
+    },
+    "itineraries": {
+      "title": "Itineraries",
+      "description": "User travel itinerary plans",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "title": { "type": "string" }
+      },
+      "rules": {
+        "read": "true",
+        "write": "request.auth != null"
+      }
+    },
+    "logs": {
+      "title": "Logs",
+      "description": "Moderation and action audit logs",
+      "properties": {
+        "id": { "type": "string" },
+        "action": { "type": "string" },
+        "adminEmail": { "type": "string" }
+      },
+      "rules": {
+        "read": "request.auth != null",
+        "write": "request.auth != null"
+      }
+    }
+  }
+}
