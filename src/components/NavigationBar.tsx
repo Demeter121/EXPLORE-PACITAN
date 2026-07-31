@@ -650,7 +650,7 @@ export default function NavigationBar({
                     className="fixed inset-0 z-[1990]"
                     onClick={() => setShowNotifDropdown(false)}
                   />
-                  <div className="absolute right-0 sm:right-0 top-14 mt-1 w-[calc(100vw-2rem)] max-w-sm sm:max-w-none sm:w-96 bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 p-4 z-[2000] text-slate-800 dark:text-slate-100 max-h-[80vh] overflow-y-auto animate-in fade-in zoom-in-95 duration-150">
+                  <div className="fixed top-16 left-4 right-4 sm:absolute sm:top-14 sm:-right-2 sm:left-auto sm:w-96 sm:max-w-none bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 p-4 z-[2000] text-slate-800 dark:text-slate-100 max-h-[calc(100dvh-5rem)] sm:max-h-[80vh] overflow-y-auto animate-in fade-in zoom-in-95 duration-150">
                     <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3 mb-2 gap-2">
                       <div className="flex items-center gap-2">
                         <Bell size={16} className="text-teal-600 dark:text-teal-400" />
@@ -959,7 +959,7 @@ export default function NavigationBar({
 
       {/* Mobile Menu dropdown */}
       {isMobileMenuOpen && (
-        <div className="lg:hidden border-t border-slate-800 bg-slate-900 px-2 pt-2 pb-4 space-y-1">
+        <div className="lg:hidden border-t border-slate-800 bg-slate-900 px-2 pt-2 pb-4 space-y-1 max-h-[calc(100dvh-4rem)] overflow-y-auto">
           <Link
             to="/"
             onClick={() => setIsMobileMenuOpen(false)}
