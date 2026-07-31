@@ -24,12 +24,12 @@ export interface FirebaseConfigType {
 const configObj = (firebaseConfig as any) || {};
 
 const DEFAULT_FIREBASE_CONFIG: FirebaseConfigType = {
-  apiKey: configObj.apiKey || "AIzaSyD6QuJJ5RMbClgqzZVkagSALeZhkfWpBaw",
-  authDomain: configObj.authDomain || "sisteminformasipariwisatapct.firebaseapp.com",
-  projectId: configObj.projectId || "sisteminformasipariwisatapct",
-  storageBucket: configObj.storageBucket || "sisteminformasipariwisatapct.firebasestorage.app",
-  messagingSenderId: configObj.messagingSenderId || "17617438203",
-  appId: configObj.appId || "1:17617438203:web:f184358361423abd2ef75e"
+  apiKey: ((import.meta as any).env?.VITE_FIREBASE_API_KEY) || configObj.apiKey || "AIzaSyD6QuJJ5RMbClgqzZVkagSALeZhkfWpBaw",
+  authDomain: ((import.meta as any).env?.VITE_FIREBASE_AUTH_DOMAIN) || configObj.authDomain || "sisteminformasipariwisatapct.firebaseapp.com",
+  projectId: ((import.meta as any).env?.VITE_FIREBASE_PROJECT_ID) || configObj.projectId || "sisteminformasipariwisatapct",
+  storageBucket: ((import.meta as any).env?.VITE_FIREBASE_STORAGE_BUCKET) || configObj.storageBucket || "sisteminformasipariwisatapct.firebasestorage.app",
+  messagingSenderId: ((import.meta as any).env?.VITE_FIREBASE_MESSAGING_SENDER_ID) || configObj.messagingSenderId || "17617438203",
+  appId: ((import.meta as any).env?.VITE_FIREBASE_APP_ID) || configObj.appId || "1:17617438203:web:f184358361423abd2ef75e"
 };
 
 const databaseId = configObj.firestoreDatabaseId || "(default)";
