@@ -25,14 +25,31 @@ export interface FirebaseConfigType {
 
 const configObj = (firebaseConfig as any) || {};
 
+const cleanEnvVar = (val: any): string => {
+  if (typeof val !== "string") return "";
+  let s = val.trim();
+  if (s.startsWith('"') && s.endsWith('"')) {
+    s = s.substring(1, s.length - 1);
+  }
+  if (s.startsWith("'") && s.endsWith("'")) {
+    s = s.substring(1, s.length - 1);
+  }
+  return s.trim();
+};
+
+const getEnvOrFallback = (envName: string, fallback: string): string => {
+  const envVal = cleanEnvVar((import.meta as any).env?.[envName]);
+  return envVal || fallback;
+};
+
 const DEFAULT_FIREBASE_CONFIG: FirebaseConfigType = {
-  apiKey: ((import.meta as any).env?.VITE_FIREBASE_API_KEY) || configObj.apiKey || "AIzaSyD6QuJJ5RMbClgqzZVkagSALeZhkfWpBaw",
-  authDomain: ((import.meta as any).env?.VITE_FIREBASE_AUTH_DOMAIN) || configObj.authDomain || "sisteminformasipariwisatapct.firebaseapp.com",
-  projectId: ((import.meta as any).env?.VITE_FIREBASE_PROJECT_ID) || configObj.projectId || "sisteminformasipariwisatapct",
-  storageBucket: ((import.meta as any).env?.VITE_FIREBASE_STORAGE_BUCKET) || configObj.storageBucket || "sisteminformasipariwisatapct.firebasestorage.app",
-  messagingSenderId: ((import.meta as any).env?.VITE_FIREBASE_MESSAGING_SENDER_ID) || configObj.messagingSenderId || "17617438203",
-  appId: ((import.meta as any).env?.VITE_FIREBASE_APP_ID) || configObj.appId || "1:17617438203:web:f184358361423abd2ef75e",
-  measurementId: ((import.meta as any).env?.VITE_FIREBASE_MEASUREMENT_ID) || configObj.measurementId || "G-G5KC7Z1VHQ"
+  apiKey: getEnvOrFallback("VITE_FIREBASE_API_KEY", configObj.apiKey || "AIzaSyD6QuJJ5RMbClgqzZVkagSALeZhkfWpBaw"),
+  authDomain: getEnvOrFallback("VITE_FIREBASE_AUTH_DOMAIN", configObj.authDomain || "sisteminformasipariwisatapct.firebaseapp.com"),
+  projectId: getEnvOrFallback("VITE_FIREBASE_PROJECT_ID", configObj.projectId || "sisteminformasipariwisatapct"),
+  storageBucket: getEnvOrFallback("VITE_FIREBASE_STORAGE_BUCKET", configObj.storageBucket || "sisteminformasipariwisatapct.firebasestorage.app"),
+  messagingSenderId: getEnvOrFallback("VITE_FIREBASE_MESSAGING_SENDER_ID", configObj.messagingSenderId || "17617438203"),
+  appId: getEnvOrFallback("VITE_FIREBASE_APP_ID", configObj.appId || "1:17617438203:web:f184358361423abd2ef75e"),
+  measurementId: getEnvOrFallback("VITE_FIREBASE_MEASUREMENT_ID", configObj.measurementId || "G-G5KC7Z1VHQ")
 };
 
 const databaseId = configObj.firestoreDatabaseId || "(default)";
