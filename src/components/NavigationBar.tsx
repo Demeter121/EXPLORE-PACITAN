@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { createPortal } from "react-dom";
 import { Link, useLocation } from "react-router-dom";
 import { 
-  Map, 
+  Map as MapIcon, 
   List, 
   Compass, 
   Info, 
@@ -36,7 +36,8 @@ import {
   Eye,
   EyeOff,
   Bot,
-  Sparkles
+  Sparkles,
+  FileSpreadsheet
 } from "lucide-react";
 import { User, UserRole, AdminNotification } from "../types";
 import { MOCK_USERS, LocalDB, enforceDefaultAccount, isDefaultAdminUtama } from "../data";
@@ -158,6 +159,7 @@ interface NavigationBarProps {
   onRegisterUser?: (name: string, email: string, password?: string) => boolean;
   onLoginUser?: (email: string, password?: string) => boolean;
   usersList?: User[];
+  onOpenSheetsModal?: () => void;
 }
 
 export default function NavigationBar({
@@ -171,7 +173,8 @@ export default function NavigationBar({
   onGoogleLogout,
   onRegisterUser,
   onLoginUser,
-  usersList = MOCK_USERS
+  usersList = MOCK_USERS,
+  onOpenSheetsModal
 }: NavigationBarProps) {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const routerLocation = useLocation();
@@ -218,17 +221,19 @@ export default function NavigationBar({
 
   const [notifTab, setNotifTab] = useState<"all" | "unread" | "read">("all");
 
-  const relevantNotifs = notifications.filter(n => {
+  const safeNotifs = Array.isArray(notifications) ? notifications : [];
+  const relevantNotifs = safeNotifs.filter(n => {
+    if (!n) return false;
     if (n.targetRole === "all") return true;
-    if (n.targetRole === "user" && currentUser.role === "user") return true;
-    if (n.targetRole === "pengelola" && (currentUser.role === "pengelola" || currentUser.role === "admin")) return true;
-    if (n.targetRole === "admin" && currentUser.role === "admin") return true;
-    if (n.targetUserId && n.targetUserId === currentUser.id) return true;
+    if (n.targetRole === "user" && currentUser?.role === "user") return true;
+    if (n.targetRole === "pengelola" && (currentUser?.role === "pengelola" || currentUser?.role === "admin")) return true;
+    if (n.targetRole === "admin" && currentUser?.role === "admin") return true;
+    if (n.targetUserId && n.targetUserId === currentUser?.id) return true;
     return false;
   });
 
-  const unreadNotifs = relevantNotifs.filter(n => !n.readBy || !n.readBy.includes(currentUser.id));
-  const readNotifs = relevantNotifs.filter(n => n.readBy && n.readBy.includes(currentUser.id));
+  const unreadNotifs = relevantNotifs.filter(n => !n.readBy || !n.readBy.includes(currentUser?.id || ""));
+  const readNotifs = relevantNotifs.filter(n => n.readBy && n.readBy.includes(currentUser?.id || ""));
 
   const displayedNotifs = notifTab === "unread" ? unreadNotifs : notifTab === "read" ? readNotifs : relevantNotifs;
 
@@ -439,7 +444,7 @@ export default function NavigationBar({
                     : "text-slate-300 hover:text-white hover:bg-slate-800/50"
                 }`}
               >
-                <Map size={15} className="hidden 2xl:block shrink-0" />
+                <MapIcon size={15} className="hidden 2xl:block shrink-0" />
                 <span>{t[lang].destinations}</span>
               </Link>
 

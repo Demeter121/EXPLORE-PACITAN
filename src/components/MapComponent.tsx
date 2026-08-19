@@ -1,5 +1,9 @@
 import { useEffect, useRef } from "react";
 import L from "leaflet";
+import "leaflet.markercluster";
+import "leaflet/dist/leaflet.css";
+import "leaflet.markercluster/dist/MarkerCluster.css";
+import "leaflet.markercluster/dist/MarkerCluster.Default.css";
 import { Location, LocationCategory } from "../types";
 
 interface MapComponentProps {
@@ -41,7 +45,7 @@ export default function MapComponent({
 }: MapComponentProps) {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
-  const markerGroupRef = useRef<L.LayerGroup | null>(null);
+  const markerClusterGroupRef = useRef<L.MarkerClusterGroup | null>(null);
   const customSelectionMarkerRef = useRef<L.Marker | null>(null);
 
   const selectCoordsRef = useRef(onSelectCoordinates);
@@ -75,7 +79,23 @@ export default function MapComponent({
       maxZoom: 19
     }).addTo(map);
 
-    markerGroupRef.current = L.layerGroup().addTo(map);
+    // Create marker cluster group
+    // @ts-ignore
+    markerClusterGroupRef.current = L.markerClusterGroup({
+      spiderfyOnMaxZoom: true,
+      showCoverageOnHover: false,
+      zoomToBoundsOnClick: true,
+      maxClusterRadius: 50,
+      iconCreateFunction: function(cluster: any) {
+        const childCount = cluster.getChildCount();
+        return new L.DivIcon({ 
+          html: `<div class="flex items-center justify-center w-10 h-10 bg-teal-600 text-white font-bold rounded-full border-[3px] border-white shadow-md"><span>${childCount}</span></div>`, 
+          className: 'custom-cluster-icon', 
+          iconSize: [40, 40] 
+        });
+      }
+    }).addTo(map);
+    
     mapInstanceRef.current = map;
 
     // Handle map clicks when in placement mode
@@ -139,8 +159,8 @@ export default function MapComponent({
   // 3. Render locations markers
   useEffect(() => {
     const map = mapInstanceRef.current;
-    const markerGroup = markerGroupRef.current;
-    if (!map || !markerGroup) return;
+    const clusterGroup = markerClusterGroupRef.current;
+    if (!map || !clusterGroup) return;
 
     // Stop active map transitions to prevent position conflicts with cleared markers
     try {
@@ -150,10 +170,13 @@ export default function MapComponent({
     }
 
     // Clear existing markers
-    markerGroup.clearLayers();
+    clusterGroup.clearLayers();
 
     // Map each approved location to a custom Leaflet HTML marker
     locations.forEach((loc) => {
+      const lat = loc.coordinates.lat;
+      const lng = loc.coordinates.lng;
+
       const color = CATEGORY_COLORS[loc.category] || "#64748b";
       const emoji = CATEGORY_EMOJIS[loc.category] || "📍";
 
@@ -176,13 +199,13 @@ export default function MapComponent({
         iconAnchor: [16, 16]
       });
 
-      const marker = L.marker([loc.coordinates.lat, loc.coordinates.lng], { icon });
+      const marker = L.marker([lat, lng], { icon });
 
       // Create rich styling popup content
       const popupContent = document.createElement("div");
       popupContent.className = "w-64 overflow-hidden rounded-lg bg-white shadow-xl border border-slate-100 font-sans";
       
-      const photoCover = loc.photos?.[0] || 'https://images.unsplash.com/photo-1544735716-392fe2489ffa?q=80&w=300';
+      const photoCover = loc.photos?.[0] || 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?q=80&w=300';
       
       popupContent.innerHTML = `
         <img src="${photoCover}" alt="${loc.name}" class="w-full h-28 object-cover" referrerPolicy="no-referrer" />
@@ -221,7 +244,7 @@ export default function MapComponent({
         }
       });
 
-      marker.addTo(markerGroup);
+      marker.addTo(clusterGroup);
     });
   }, [locations]);
 

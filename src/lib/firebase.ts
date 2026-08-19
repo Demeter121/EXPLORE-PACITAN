@@ -52,7 +52,37 @@ const DEFAULT_FIREBASE_CONFIG: FirebaseConfigType = {
   measurementId: cleanEnvVar(configObj.measurementId) || getEnvOrFallback("VITE_FIREBASE_MEASUREMENT_ID", "G-G5KC7Z1VHQ")
 };
 
-const databaseId = configObj.firestoreDatabaseId || "(default)";
+export const SCOPES = [
+  'https://www.googleapis.com/auth/spreadsheets',
+  'https://www.googleapis.com/auth/drive.file',
+  'https://www.googleapis.com/auth/drive.readonly',
+  'https://www.googleapis.com/auth/drive'
+];
+
+let cachedAccessToken: string | null = null;
+
+export const getCachedGoogleAccessToken = (): string | null => {
+  if (cachedAccessToken) return cachedAccessToken;
+  try {
+    const saved = localStorage.getItem("sipp_google_sheets_token");
+    if (saved) {
+      cachedAccessToken = saved;
+      return saved;
+    }
+  } catch (e) {}
+  return null;
+};
+
+export const setCachedGoogleAccessToken = (token: string | null) => {
+  cachedAccessToken = token;
+  try {
+    if (token) {
+      localStorage.setItem("sipp_google_sheets_token", token);
+    } else {
+      localStorage.removeItem("sipp_google_sheets_token");
+    }
+  } catch (e) {}
+};
 
 let app: FirebaseApp | null = null;
 let auth: Auth | null = null;
@@ -65,7 +95,7 @@ export const getActiveFirebaseConfig = (): FirebaseConfigType => {
     const custom = localStorage.getItem("sipp_custom_firebase_config");
     if (custom) {
       const parsed = JSON.parse(custom);
-      if (parsed && parsed.apiKey && parsed.apiKey.startsWith("AIza")) {
+      if (parsed && parsed.apiKey && parsed.apiKey.startsWith("AIza") && (!configObj.projectId || parsed.projectId === configObj.projectId)) {
         return parsed;
       }
     }
@@ -80,6 +110,18 @@ export const isValidApiKey = (key: string): boolean => {
     key.length > 10 && 
     !key.includes("PLEASE_REPLACE") && 
     key.startsWith("AIza");
+};
+
+export const getGoogleSheetsAuthProvider = (): GoogleAuthProvider => {
+  const provider = new GoogleAuthProvider();
+  SCOPES.forEach(scope => {
+    provider.addScope(scope);
+  });
+  provider.setCustomParameters({
+    prompt: "consent",
+    access_type: "offline"
+  });
+  return provider;
 };
 
 export const initFirebaseConnector = (customCfg?: FirebaseConfigType) => {
@@ -124,29 +166,14 @@ export const initFirebaseConnector = (customCfg?: FirebaseConfigType) => {
     try {
       db = getFirestore(app);
     } catch {
-      try {
-        db = getFirestore(app, databaseId);
-      } catch {
-        db = null;
-      }
+      db = null;
     }
     
+    // Initialize standard Google Auth Provider for Login
     googleProvider = new GoogleAuthProvider();
-    
-    // Safely initialize analytics in supported client environments
-    // Note: Disabled by default because the API key is restricted to Auth & Firestore.
-    // Initializing getAnalytics(app) triggers background Installations API calls that return 400 INVALID_ARGUMENT.
-    /*
-    if (typeof window !== "undefined") {
-      isSupported().then((supported) => {
-        if (supported && app) {
-          analytics = getAnalytics(app);
-        }
-      }).catch((e) => {
-        console.warn("Analytics not supported in this environment:", e);
-      });
-    }
-    */
+    googleProvider.setCustomParameters({
+      prompt: "select_account"
+    });
 
     return true;
   } catch (err) {
@@ -252,7 +279,12 @@ const signInWithGooglePopup = async (_authObj?: any, _providerObj?: any) => {
   }
 
   try {
-    return await fbSignInWithPopup(activeAuth, activeProvider);
+    const result = await fbSignInWithPopup(activeAuth, activeProvider);
+    const credential = GoogleAuthProvider.credentialFromResult(result);
+    if (credential?.accessToken) {
+      cachedAccessToken = credential.accessToken;
+    }
+    return result;
   } catch (err: any) {
     if (err?.code === "auth/popup-closed-by-user") {
       const customErr = new Error("Jendela login Google ditutup sebelum selesai.");
@@ -279,6 +311,7 @@ export const getGoogleProvider = (): GoogleAuthProvider | null => {
 
 // Safe wrapper for Sign Out
 const safeSignOut = async (_authObj?: any) => {
+  cachedAccessToken = null;
   if (auth) {
     try {
       await fbSignOut(auth);

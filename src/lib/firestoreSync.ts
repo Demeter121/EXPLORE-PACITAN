@@ -33,6 +33,24 @@ import {
   enforceDefaultAccount
 } from "../data";
 
+// Helper function to sanitize any ID into a valid Firestore document ID (no forward slashes, URLs, or invalid characters)
+export function sanitizeFirestoreDocId(id: string, fallbackPrefix: string = "doc"): string {
+  if (!id || typeof id !== "string") {
+    return `${fallbackPrefix}_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+  }
+  // Strip URL protocol if present
+  let safe = id.trim().replace(/^https?:\/\//i, "").split("?")[0];
+  // Replace all forward slashes, backslashes, colons, and non-alphanumeric chars with underscore
+  safe = safe.replace(/[\/\\]+/g, "_").replace(/[^a-zA-Z0-9_-]/g, "_").replace(/^_+|_+$/g, "");
+  if (!safe || safe === "." || safe === "..") {
+    return `${fallbackPrefix}_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+  }
+  if (safe.length > 150) {
+    safe = safe.substring(0, 150);
+  }
+  return safe;
+}
+
 // Helper function to recursively remove undefined properties from any object to prevent Firestore errors
 export function cleanObject(obj: any): any {
   if (obj === null || obj === undefined) return null;
@@ -65,40 +83,45 @@ export async function syncStateToFirestore<T extends { id: string }>(
     return;
   }
 
-  const previousList = lastListRef.current;
+  const previousList = Array.isArray(lastListRef.current) ? lastListRef.current : [];
+  const safeCurrentList = Array.isArray(currentList) ? currentList : [];
   
   // Find added or updated items
-  const addedOrUpdated = currentList.filter(item => {
-    const prevItem = previousList.find(p => p.id === item.id);
+  const addedOrUpdated = safeCurrentList.filter(item => {
+    if (!item) return false;
+    const prevItem = previousList.find(p => p && p.id === item.id);
     if (!prevItem) return true; // Added
     return JSON.stringify(prevItem) !== JSON.stringify(item); // Updated
   });
 
   // Find deleted items
   const deleted = previousList.filter(prevItem => {
-    return !currentList.some(item => item.id === prevItem.id);
+    if (!prevItem) return false;
+    return !safeCurrentList.some(item => item && item.id === prevItem.id);
   });
 
   // Write changes to Firestore
   if (addedOrUpdated.length > 0) {
     for (const item of addedOrUpdated) {
+      const safeId = sanitizeFirestoreDocId(item.id, collectionName);
       try {
-        const cleanedItem = cleanObject(item);
-        await setDoc(doc(db, collectionName, item.id), cleanedItem);
+        const cleanedItem = cleanObject({ ...item, id: safeId });
+        await setDoc(doc(db, collectionName, safeId), cleanedItem);
       } catch (err) {
         console.error(`Error saving ${collectionName} item to Firestore:`, err);
-        handleFirestoreError(err, OperationType.WRITE, `${collectionName}/${item.id}`);
+        handleFirestoreError(err, OperationType.WRITE, `${collectionName}/${safeId}`);
       }
     }
   }
 
   if (deleted.length > 0) {
     for (const item of deleted) {
+      const safeId = sanitizeFirestoreDocId(item.id, collectionName);
       try {
-        await deleteDoc(doc(db, collectionName, item.id));
+        await deleteDoc(doc(db, collectionName, safeId));
       } catch (err) {
         console.error(`Error deleting ${collectionName} item from Firestore:`, err);
-        handleFirestoreError(err, OperationType.DELETE, `${collectionName}/${item.id}`);
+        handleFirestoreError(err, OperationType.DELETE, `${collectionName}/${safeId}`);
       }
     }
   }
@@ -108,6 +131,25 @@ export async function syncStateToFirestore<T extends { id: string }>(
 }
 
 // Helper to seed a Firestore collection with default data when it is empty
+export async function clearFirestoreCollection(collectionName: string) {
+  if (!db) return;
+  console.log(`FirestoreSync: Clearing collection "${collectionName}"...`);
+  try {
+    const { getDocs, query, collection, deleteDoc, doc } = await import("firebase/firestore");
+    const q = query(collection(db, collectionName));
+    const snapshot = await getDocs(q);
+    
+    const batch = writeBatch(db);
+    snapshot.forEach((d) => {
+      batch.delete(doc(db!, collectionName, d.id));
+    });
+    await batch.commit();
+    console.log(`FirestoreSync: Successfully cleared collection "${collectionName}".`);
+  } catch (err) {
+    console.error(`FirestoreSync: Failed to clear collection "${collectionName}":`, err);
+  }
+}
+
 async function seedFirestoreCollection<T extends { id: string }>(
   collectionName: string,
   initialData: T[]
@@ -117,8 +159,9 @@ async function seedFirestoreCollection<T extends { id: string }>(
   try {
     const batch = writeBatch(db);
     initialData.forEach(item => {
-      const dRef = doc(db!, collectionName, item.id);
-      const cleanedItem = cleanObject(item);
+      const safeId = sanitizeFirestoreDocId(item.id, collectionName);
+      const dRef = doc(db!, collectionName, safeId);
+      const cleanedItem = cleanObject({ ...item, id: safeId });
       batch.set(dRef, cleanedItem);
     });
     await batch.commit();
@@ -203,17 +246,22 @@ export function useFirestoreSync({
 
           let list: T[] = [];
           snapshot.forEach(doc => {
-            list.push(doc.data() as T);
+            const data = doc.data() as T;
+            const safeDocId = sanitizeFirestoreDocId(data.id || doc.id, collectionName);
+            list.push({ ...data, id: safeDocId });
           });
 
           if (collectionName === "users") {
             list = LocalDB.cleanAndDeduplicateUsers(list as unknown as User[]) as unknown as T[];
+          } else if (collectionName === "locations") {
+            list = LocalDB.deduplicateLocations(list as unknown as Location[]) as unknown as T[];
           } else {
             const seen = new Set<string>();
             const deduped: T[] = [];
             for (const item of list) {
-              if (item && item.id && !seen.has(item.id)) {
-                seen.add(item.id);
+              const key = (item && item.id) ? item.id.toLowerCase().trim() : "";
+              if (key && !seen.has(key)) {
+                seen.add(key);
                 deduped.push(item);
               }
             }

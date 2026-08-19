@@ -78,210 +78,7 @@ export const INITIAL_NOTIFICATIONS: AdminNotification[] = [
   }
 ];
 
-export const INITIAL_LOCATIONS: Location[] = [
-  {
-    id: "loc_1",
-    name: "Pantai Klayar",
-    category: "wisata",
-    description: "Pantai eksotis dengan hamparan pasir putih, batu karang menyerupai Sphinx, dan semburan air 'seruling samudera' alami dari celah batu karang yang menghasilkan bunyi siulan unik saat dihantam ombak.",
-    coordinates: { lat: -8.2255, lng: 110.9786 },
-    address: "Desa Sendang, Kecamatan Donorojo, Kabupaten Pacitan, Jawa Timur",
-    photos: [
-      "https://images.unsplash.com/photo-1544735716-392fe2489ffa?q=80&w=800&auto=format&fit=crop",
-      "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?q=80&w=800&auto=format&fit=crop"
-    ],
-    status: "approved",
-    createdBy: "usr_2",
-    createdAt: daysAgo(30),
-    updatedAt: daysAgo(30),
-    ratingAverage: 4.7,
-    reviewCount: 3,
-    openingHours: "24 Jam (Terbaik 06:00 - 18:00)",
-    priceRange: "Rp 10.000 - Rp 15.000",
-    contact: "+62-812-3456-7890"
-  },
-  {
-    id: "loc_2",
-    name: "Goa Gong",
-    category: "wisata",
-    description: "Goa stalaktit dan stalagmit yang diklaim sebagai salah satu goa tercantik di Asia Tenggara. Ketika beberapa batu stalaktit dipukul, bebatuan tersebut akan mengeluarkan bunyi selaiknya gong karawitan jawa.",
-    coordinates: { lat: -8.1388, lng: 111.0234 },
-    address: "Desa Bomo, Kecamatan Punung, Kabupaten Pacitan, Jawa Timur",
-    photos: [
-      "https://images.unsplash.com/photo-1507163212151-0a404f6b3bae?q=80&w=800&auto=format&fit=crop",
-      "https://images.unsplash.com/photo-1524168233155-ac707204fc19?q=80&w=800&auto=format&fit=crop"
-    ],
-    status: "approved",
-    createdBy: "21oQqjjDX0Xfs0ddKRsVJlsxGqm1",
-    createdAt: daysAgo(25),
-    updatedAt: daysAgo(25),
-    ratingAverage: 4.8,
-    reviewCount: 2,
-    openingHours: "07:00 - 17:00 WIB",
-    priceRange: "Rp 20.000 (Domestik)",
-    contact: "+62-823-8888-0099"
-  },
-  {
-    id: "loc_3",
-    name: "Pantai Kasap",
-    category: "wisata",
-    description: "Sering dijuluki sebagai 'Mini Raja Ampat' dari Pacitan karena memiliki panorama bukit-bukit karang kecil di perairan laut lepas yang bisa dinikmati secara dramatis dari atas bukitgardu pandang.",
-    coordinates: { lat: -8.2269, lng: 111.0253 },
-    address: "Dusun Watukarung, Candi, Kecamatan Pringkuku, Kabupaten Pacitan, Jawa Timur",
-    photos: [
-      "https://images.unsplash.com/photo-1519046904884-53103b34b206?q=80&w=800&auto=format&fit=crop"
-    ],
-    status: "approved",
-    createdBy: "21oQqjjDX0Xfs0ddKRsVJlsxGqm1",
-    createdAt: daysAgo(20),
-    updatedAt: daysAgo(18),
-    ratingAverage: 4.5,
-    reviewCount: 2,
-    openingHours: "06:00 - 18:00 WIB",
-    priceRange: "Rp 5.000",
-    contact: "+62-856-7772-2211"
-  },
-  {
-    id: "loc_4",
-    name: "Pantai Watukarung & Surf Resort",
-    category: "wisata",
-    description: "Pantai berpasir putih lembut dengan ombak bertaraf internasional kelas dunia (barrel wave) yang sangat disukai para peselancar dunia, dipadukan keindahan pulau-pulau karang gagah di sekelilingnya.",
-    coordinates: { lat: -8.2238, lng: 111.0375 },
-    address: "Desa Watukarung, Kecamatan Pringkuku, Kabupaten Pacitan, Jawa Timur",
-    photos: [
-      "https://images.unsplash.com/photo-1502680390469-be75c86b636f?q=80&w=800&auto=format&fit=crop"
-    ],
-    status: "approved",
-    createdBy: "usr_2",
-    createdAt: daysAgo(28),
-    updatedAt: daysAgo(28),
-    ratingAverage: 4.6,
-    reviewCount: 1,
-    openingHours: "24 Jam",
-    priceRange: "Rp 5.000 - Rp 10.000",
-    contact: "+62-899-2234-9988"
-  },
-  {
-    id: "loc_5",
-    name: "Harry's Ocean Villa",
-    category: "penginapan",
-    description: "Villa bernuansa tropis minimalis persis di bibir Pantai Watukarung. Menawarkan sensasi pemandangan laut langsung dari kamar dan kemudahan akses instan bagi para peminat olahraga berselancar ria.",
-    coordinates: { lat: -8.2235, lng: 111.0381 },
-    address: "Jalan Shoreline No. 12, Watukarung, Pacitan, Jawa Timur",
-    photos: [
-      "https://images.unsplash.com/photo-1566073771259-6a8506099945?q=80&w=800&auto=format&fit=crop"
-    ],
-    status: "approved",
-    createdBy: "usr_2",
-    createdAt: daysAgo(15),
-    updatedAt: daysAgo(15),
-    ratingAverage: 4.4,
-    reviewCount: 1,
-    openingHours: "Resepsionis 24 Jam",
-    priceRange: "Rp 650.000 - Rp 1.500.000 / Malam",
-    contact: "+62-811-0099-2233"
-  },
-  {
-    id: "loc_6",
-    name: "Istana Hotel Pacitan",
-    category: "penginapan",
-    description: "Hotel legendaris bernuansa klasik modern di pusat kota Pacitan. Menggabungkan kenyamanan modern dengan lokasi strategis yang memudahkan bepergian ke instansi administratif maupun alun-alun kota.",
-    coordinates: { lat: -8.1994, lng: 111.1005 },
-    address: "Jl. Jenderal Ahmad Yani No. 34, Pacitan Kota, Jawa Timur",
-    photos: [
-      "https://images.unsplash.com/photo-1551882547-ff40c63fe5fa?q=80&w=800&auto=format&fit=crop"
-    ],
-    status: "approved",
-    createdBy: "21oQqjjDX0Xfs0ddKRsVJlsxGqm1",
-    createdAt: daysAgo(29),
-    updatedAt: daysAgo(29),
-    ratingAverage: 4.2,
-    reviewCount: 1,
-    openingHours: "Resepsionis 24 Jam",
-    priceRange: "Rp 350.000 - Rp 700.000 / Malam",
-    contact: "+62-357-811116"
-  },
-  {
-    id: "loc_7",
-    name: "Sate Kambing Pak Sugiyanto",
-    category: "makan",
-    description: "Sate kambing khas Pacitan dengan bumbu kecap pekat meresap, potongan daging tebal empuk tanpa aroma prengus, disajikan lengkap bersama gulai kambing kaya rempah khas tradisional.",
-    coordinates: { lat: -8.2045, lng: 111.1032 },
-    address: "Jl. Gatot Subroto No. 45, Krajan, Pacitan Kota, Jawa Timur",
-    photos: [
-      "https://images.unsplash.com/photo-1555939594-58d7cb561ad1?q=80&w=800&auto=format&fit=crop"
-    ],
-    status: "approved",
-    createdBy: "usr_1",
-    createdAt: daysAgo(12),
-    updatedAt: daysAgo(12),
-    ratingAverage: 4.6,
-    reviewCount: 1,
-    openingHours: "09:00 - 21:00 WIB",
-    priceRange: "Rp 30.000 - Rp 60.000 / Porsi",
-    contact: "+62-812-4411-5588"
-  },
-  {
-    id: "loc_8",
-    name: "Kopi nGelir & Roastery",
-    category: "coffeeshop",
-    description: "Kafe kopi artisan anak muda paling hits di Pacitan kota. Menawarkan ragam olahan kopi espresso, biji single-origin nusantara, minuman non-kopi segar, dan tempat bernuansa industrial minimalis nyaman.",
-    coordinates: { lat: -8.1978, lng: 111.1020 },
-    address: "Jl. Dr. Sutomo No. 89, Pacitan Kota, Jawa Timur",
-    photos: [
-      "https://images.unsplash.com/photo-1554118811-1e0d58224f24?q=80&w=800&auto=format&fit=crop"
-    ],
-    status: "approved",
-    createdBy: "usr_1",
-    createdAt: daysAgo(8),
-    updatedAt: daysAgo(8),
-    ratingAverage: 4.5,
-    reviewCount: 1,
-    openingHours: "10:00 - 23:00 WIB",
-    priceRange: "Rp 15.000 - Rp 35.000",
-    contact: "+62-878-9900-5522"
-  },
-  {
-    id: "loc_9",
-    name: "Pusat Oleh-Oleh Khas Pacitan Putra Samudra",
-    category: "belanja",
-    description: "Pusat belanja buah tangan dan oleh-oleh khas Pacitan paling populer dan terlengkap. Menjual aneka camilan lezat seperti Sale Pisang, Thiwul instan manis, Jenang Pacitan, olahan abon tuna premium, serta kaos cinderamata dan kerajinan batu mulia lokal Pacitan.",
-    coordinates: { lat: -8.2052, lng: 111.0995 },
-    address: "Jl. Jenderal Sudirman No. 102, Krajan, Pacitan Kota, Jawa Timur",
-    photos: [
-      "https://images.unsplash.com/photo-1542838132-92c53300491e?q=80&w=800&auto=format&fit=crop"
-    ],
-    status: "approved",
-    createdBy: "21oQqjjDX0Xfs0ddKRsVJlsxGqm1",
-    createdAt: daysAgo(10),
-    updatedAt: daysAgo(10),
-    ratingAverage: 4.7,
-    reviewCount: 2,
-    openingHours: "07:30 - 21:30 WIB",
-    priceRange: "Rp 5.000 - Rp 200.000",
-    contact: "+62-812-9900-1122"
-  },
-  {
-    id: "loc_10",
-    name: "Batik Tulis Pace Pacitan - Galeri Tjokro",
-    category: "belanja",
-    description: "Galeri produksi dan pameran seni batik tulis motif pace (mengkudu) yang menjadi ikon budaya khas Pacitan. Menyediakan kain batik tulis otentik, pakaian formal siap pakai, tas etnik, hingga syal premium karya pengrajin lokal Pacitan.",
-    coordinates: { lat: -8.1990, lng: 111.1012 },
-    address: "Jl. Dr. Sutomo No. 12, Krajan, Pacitan Kota, Jawa Timur",
-    photos: [
-      "https://images.unsplash.com/photo-1441986300917-64674bd600d8?q=80&w=800&auto=format&fit=crop"
-    ],
-    status: "approved",
-    createdBy: "usr_1",
-    createdAt: daysAgo(7),
-    updatedAt: daysAgo(7),
-    ratingAverage: 4.8,
-    reviewCount: 1,
-    openingHours: "08:00 - 18:00 WIB",
-    priceRange: "Rp 50.000 - Rp 950.000",
-    contact: "+62-856-4433-2211"
-  }
-];
+export const INITIAL_LOCATIONS: Location[] = [];
 
 export const INITIAL_SUBMISSIONS: LocationSubmission[] = [
   {
@@ -459,7 +256,7 @@ export const INITIAL_TOUR_PACKAGES: TourPackage[] = [
     destinations: ["Goa Gong", "Pantai Klayar", "Pantai Kasap"],
     includes: ["Transportasi AC PP", "Makan Siang Prasmanan", "Tiket Masuk Semua Wisata", "Air Mineral", "Pemandu Wisata Profesional"],
     contactWhatsApp: "https://wa.me/6281234567890?text=Halo%20Pacitan%20Adventure,%20saya%20tertarik%20dengan%20Paket%20Eksotis%20Pacitan%20Barat",
-    photo: "https://images.unsplash.com/photo-1544735716-392fe2489ffa?q=80&w=800&auto=format&fit=crop",
+    photo: "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?q=80&w=800&auto=format&fit=crop",
     rating: 4.8,
     reviewsCount: 14
   },
@@ -588,35 +385,77 @@ export const enforceDefaultAccount = (u: User): User => {
 
 export class LocalDB {
   static get<T>(key: string, defaultValue: T): T {
-    const data = localStorage.getItem(`sipp_${key}`);
-    return data ? JSON.parse(data) : defaultValue;
+    try {
+      const data = localStorage.getItem(`sipp_${key}`);
+      if (!data) return defaultValue;
+      const parsed = JSON.parse(data);
+      return parsed !== null && parsed !== undefined ? parsed : defaultValue;
+    } catch {
+      return defaultValue;
+    }
   }
 
   static save<T>(key: string, data: T): void {
-    localStorage.setItem(`sipp_${key}`, JSON.stringify(data));
+    try {
+      localStorage.setItem(`sipp_${key}`, JSON.stringify(data));
+    } catch (e) {
+      console.warn("Failed to save to localStorage:", e);
+    }
+  }
+
+  static deduplicateLocations(list: Location[]): Location[] {
+    if (!Array.isArray(list)) return [];
+    const valid = list.filter(item => item && item.name);
+    const idMap = new Map<string, Location>();
+    valid.forEach((loc, idx) => {
+      let rawId = loc.id || "";
+      // If ID starts with ChIJ (Google Place ID) or contains raw URL/slashes/special chars or is numeric/timestamp
+      const isGooglePlaceId = rawId.startsWith("ChIJ") || rawId.length > 30 || rawId.includes("/") || rawId.startsWith("http");
+      
+      let slug = "";
+      if (loc.name) {
+        slug = loc.name
+          .toLowerCase()
+          .trim()
+          .replace(/['"]/g, "")
+          .replace(/[^a-z0-9]+/g, "-")
+          .replace(/^-+|-+$/g, "");
+      }
+
+      let safeId = (!rawId || isGooglePlaceId || !slug) ? (slug ? `pacitan-${slug}` : `destinasi-${idx}`) : rawId.replace(/[^a-zA-Z0-9_-]/g, "-");
+      
+      const cleaned: Location = { ...loc, id: safeId };
+      const key = safeId.toLowerCase().trim();
+      if (!idMap.has(key)) {
+        idMap.set(key, cleaned);
+      } else {
+        const existing = idMap.get(key)!;
+        idMap.set(key, { ...existing, ...cleaned });
+      }
+    });
+    return Array.from(idMap.values());
   }
 
   static getLocations(): Location[] {
-    const stored = this.get<Location[]>("locations", INITIAL_LOCATIONS);
-    const validStored = stored.filter(l => l && l.id);
-    const uniqueMap = new Map<string, Location>();
-    validStored.forEach(loc => {
-      const key = (loc.id || "").toLowerCase().trim();
-      if (!uniqueMap.has(key)) {
-        uniqueMap.set(key, loc);
-      }
+    const stored = this.get<Location[]>("locations", []);
+    const safeStored = Array.isArray(stored) ? stored : [];
+    const combined = [...INITIAL_LOCATIONS, ...safeStored];
+    const result = this.deduplicateLocations(combined).map(loc => {
+      const photos = Array.isArray(loc?.photos) ? loc.photos : [];
+      const filteredPhotos = photos.filter(p => p && !p.includes("1544735716-392fe2489ffa"));
+      return {
+        ...loc,
+        photos: filteredPhotos.length > 0
+          ? filteredPhotos
+          : ["https://images.unsplash.com/photo-1507525428034-b723cf961d3e?q=80&w=800&auto=format&fit=crop"]
+      };
     });
-    const result = Array.from(uniqueMap.values()).map(loc => ({
-      ...loc,
-      photos: (!loc.photos || loc.photos.length === 0 || !loc.photos[0] || loc.photos[0].trim() === "")
-        ? ["https://images.unsplash.com/photo-1544735716-392fe2489ffa?q=80&w=800&auto=format&fit=crop"]
-        : loc.photos
-    }));
     this.save("locations", result);
     return result;
   }
 
   static deduplicateById<T extends { id: string }>(list: T[]): T[] {
+    if (!Array.isArray(list)) return [];
     const valid = list.filter(item => item && item.id);
     const map = new Map<string, T>();
     valid.forEach(item => {
@@ -632,6 +471,7 @@ export class LocalDB {
   }
 
   static cleanAndDeduplicateUsers(data: User[]): User[] {
+    if (!Array.isArray(data)) return [];
     const validStored = data.filter(u => u && u.id);
     
     // Helper to merge roles preserving elevated/admin status
@@ -669,7 +509,7 @@ export class LocalDB {
     // Step 2: Strict deduplication by normalized email (or name if no email)
     const uniqueMap = new Map<string, User>();
     Array.from(byIdMap.values()).forEach(u => {
-      let key = u.email ? u.email.toLowerCase().trim() : u.name.toLowerCase().trim().replace(/\s+/g, " ");
+      let key = u.email ? u.email.toLowerCase().trim() : (u.name || "").toLowerCase().trim().replace(/\s+/g, " ");
 
       if (!uniqueMap.has(key)) {
         uniqueMap.set(key, u);
@@ -712,12 +552,13 @@ export class LocalDB {
   }
 
   static saveLocations(data: Location[]): void {
-    this.save("locations", this.deduplicateById(data));
+    this.save("locations", this.deduplicateLocations(data));
   }
 
   static getSubmissions(): LocationSubmission[] {
     const subs = this.get<LocationSubmission[]>("submissions", INITIAL_SUBMISSIONS);
-    const validSubs = subs.filter(s => s && s.id);
+    const safeSubs = Array.isArray(subs) ? subs : INITIAL_SUBMISSIONS;
+    const validSubs = safeSubs.filter(s => s && s.id);
     const uniqueMap = new Map<string, LocationSubmission>();
     validSubs.forEach(sub => {
       const key = (sub.id || "").toLowerCase().trim();
@@ -725,15 +566,24 @@ export class LocalDB {
         uniqueMap.set(key, sub);
       }
     });
-    const result = Array.from(uniqueMap.values()).map(sub => ({
-      ...sub,
-      payload: {
-        ...sub.payload,
-        photos: (!sub.payload.photos || sub.payload.photos.length === 0 || !sub.payload.photos[0] || sub.payload.photos[0].trim() === "")
-          ? ["https://images.unsplash.com/photo-1544735716-392fe2489ffa?q=80&w=800&auto=format&fit=crop"]
-          : sub.payload.photos
-      }
-    }));
+    const result: LocationSubmission[] = Array.from(uniqueMap.values()).map(sub => {
+      const photos = Array.isArray(sub?.payload?.photos) ? sub.payload.photos : [];
+      const filteredPhotos = photos.filter(p => p && !p.includes("1544735716-392fe2489ffa"));
+      return {
+        ...sub,
+        payload: {
+          name: sub.payload?.name || "Destinasi Baru",
+          category: sub.payload?.category || "wisata",
+          description: sub.payload?.description || "",
+          coordinates: sub.payload?.coordinates || { lat: -8.2046, lng: 111.0921 },
+          address: sub.payload?.address || "Pacitan, Jawa Timur",
+          ...sub.payload,
+          photos: filteredPhotos.length > 0
+            ? filteredPhotos
+            : ["https://images.unsplash.com/photo-1507525428034-b723cf961d3e?q=80&w=800&auto=format&fit=crop"]
+        }
+      };
+    });
     this.save("submissions", result);
     return result;
   }
@@ -744,7 +594,8 @@ export class LocalDB {
 
   static getReviews(): Review[] {
     const stored = this.get<Review[]>("reviews", INITIAL_REVIEWS);
-    const validStored = stored.filter(r => r && r.id);
+    const safeStored = Array.isArray(stored) ? stored : INITIAL_REVIEWS;
+    const validStored = safeStored.filter(r => r && r.id);
     const uniqueMap = new Map<string, Review>();
     validStored.forEach(rev => {
       const key = (rev.id || "").toLowerCase().trim();
@@ -763,12 +614,32 @@ export class LocalDB {
 
   static getItineraries(): Itinerary[] {
     const stored = this.get<Itinerary[]>("itineraries", INITIAL_ITINERARIES);
-    const validStored = stored.filter(i => i && i.id);
+    const safeStored = Array.isArray(stored) ? stored : INITIAL_ITINERARIES;
+    const validStored = safeStored.filter(i => i && i.title);
     const uniqueMap = new Map<string, Itinerary>();
-    validStored.forEach(iti => {
-      const key = (iti.id || "").toLowerCase().trim();
+    validStored.forEach((iti, idx) => {
+      let rawId = iti.id || "";
+      const isTimestampId = rawId.startsWith("iti_") || rawId.length > 20 || rawId.includes("/") || rawId.startsWith("http");
+      
+      let slug = "";
+      if (iti.title) {
+        slug = iti.title
+          .toLowerCase()
+          .trim()
+          .replace(/['"]/g, "")
+          .replace(/[^a-z0-9]+/g, "-")
+          .replace(/^-+|-+$/g, "");
+      }
+
+      let safeId = (!rawId || isTimestampId || !slug) ? (slug ? `itinerari-${slug}` : `itinerari-${idx}`) : rawId.replace(/[^a-zA-Z0-9_-]/g, "-");
+
+      const cleaned: Itinerary = { ...iti, id: safeId };
+      const key = safeId.toLowerCase().trim();
       if (!uniqueMap.has(key)) {
-        uniqueMap.set(key, iti);
+        uniqueMap.set(key, cleaned);
+      } else {
+        const existing = uniqueMap.get(key)!;
+        uniqueMap.set(key, { ...existing, ...cleaned });
       }
     });
     const result = Array.from(uniqueMap.values());
@@ -782,7 +653,8 @@ export class LocalDB {
 
   static getLogs(): ModerationLog[] {
     const stored = this.get<ModerationLog[]>("logs", INITIAL_LOGS);
-    const validStored = stored.filter(l => l && l.id);
+    const safeStored = Array.isArray(stored) ? stored : INITIAL_LOGS;
+    const validStored = safeStored.filter(l => l && l.id);
     const uniqueMap = new Map<string, ModerationLog>();
     validStored.forEach(log => {
       const key = (log.id || "").toLowerCase().trim();
@@ -801,7 +673,8 @@ export class LocalDB {
 
   static getTourPackages(): TourPackage[] {
     const stored = this.get<TourPackage[]>("tour_packages", INITIAL_TOUR_PACKAGES);
-    const validStored = stored.filter(p => p && p.id);
+    const safeStored = Array.isArray(stored) ? stored : INITIAL_TOUR_PACKAGES;
+    const validStored = safeStored.filter(p => p && p.id);
     const uniqueMap = new Map<string, TourPackage>();
     validStored.forEach(pkg => {
       const key = (pkg.id || "").toLowerCase().trim();
@@ -820,7 +693,8 @@ export class LocalDB {
 
   static getNotifications(): AdminNotification[] {
     const stored = this.get<AdminNotification[]>("notifications", INITIAL_NOTIFICATIONS);
-    const validStored = stored.filter(n => n && n.id);
+    const safeStored = Array.isArray(stored) ? stored : INITIAL_NOTIFICATIONS;
+    const validStored = safeStored.filter(n => n && n.id);
     const uniqueMap = new Map<string, AdminNotification>();
     validStored.forEach(notif => {
       const key = (notif.id || "").toLowerCase().trim();
@@ -837,9 +711,10 @@ export class LocalDB {
   }
 
   static saveNotifications(data: AdminNotification[]): void {
+    if (!Array.isArray(data)) return;
     const sanitized = data.map(n => ({
       ...n,
-      readBy: Array.isArray(n.readBy) ? n.readBy : []
+      readBy: Array.isArray(n?.readBy) ? n.readBy : []
     }));
     this.save("notifications", this.deduplicateById(sanitized));
   }

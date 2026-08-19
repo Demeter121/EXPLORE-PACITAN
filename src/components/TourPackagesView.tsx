@@ -88,11 +88,13 @@ export default function TourPackagesView({
   ];
 
   // Filter packages
-  const filteredPackages = packages.filter((pkg) => {
+  const safePackages = Array.isArray(packages) ? packages : [];
+  const filteredPackages = safePackages.filter((pkg) => {
+    if (!pkg) return false;
     const matchesSearch =
-      pkg.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      pkg.provider.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      pkg.description.toLowerCase().includes(searchTerm.toLowerCase());
+      (pkg.title || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (pkg.provider || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (pkg.description || "").toLowerCase().includes(searchTerm.toLowerCase());
     
     const matchesCategory = selectedCategory === "all" || pkg.category === selectedCategory;
     
@@ -125,7 +127,7 @@ export default function TourPackagesView({
       formattedWA = `https://wa.me/${finalPhone}?text=Halo%20${encodeURIComponent(provider)},%20saya%20tertarik%20dengan%20paket%20wisata%2520${encodeURIComponent(title)}`;
     }
 
-    const defaultPhoto = photo.trim() || "https://images.unsplash.com/photo-1544735716-392fe2489ffa?q=80&w=800&auto=format&fit=crop";
+    const defaultPhoto = photo.trim() || "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?q=80&w=800&auto=format&fit=crop";
 
     const newPackage: TourPackage = {
       id: "pkg_" + Date.now(),

@@ -44,7 +44,8 @@ export default function ItineraryBuilder({
   onDeleteItinerary
 }: ItineraryBuilderProps) {
   // Only display itineraries created by current user
-  const userItineraries = itineraries.filter((i) => i.createdBy === currentUser.id);
+  const safeItineraries = Array.isArray(itineraries) ? itineraries : [];
+  const userItineraries = safeItineraries.filter((i) => i && currentUser && i.createdBy === currentUser.id);
 
   const [activeItinerary, setActiveItinerary] = useState<Itinerary | null>(
     userItineraries.length > 0 ? userItineraries[0] : null
@@ -98,6 +99,17 @@ export default function ItineraryBuilder({
   const [days, setDays] = useState<ItineraryDay[]>([]);
   const [isPublic, setIsPublic] = useState(true);
 
+  // Route Optimization Modal State
+  const [optimizeModalDay, setOptimizeModalDay] = useState<ItineraryDay | null>(null);
+  const [optimizeStartPoint, setOptimizeStartPoint] = useState<"first" | "center" | "gps">("first");
+  const [isOptimizing, setIsOptimizing] = useState(false);
+  const [optimizedItems, setOptimizedItems] = useState<ItineraryItem[] | null>(null);
+  const [optimizationStats, setOptimizationStats] = useState<{
+    originalDistance: number;
+    optimizedDistance: number;
+    improvementPercent: number;
+  } | null>(null);
+
   // Sorting anchor per day
   const [sortingAnchor, setSortingAnchor] = useState<Record<number, string>>({});
 
@@ -106,6 +118,216 @@ export default function ItineraryBuilder({
 
   // Category filter state for individual itinerary item selector rows
   const [rowCategoryFilter, setRowCategoryFilter] = useState<Record<string, string>>({});
+
+  const handleApplyOptimization = () => {
+    if (!optimizeModalDay || !optimizedItems) return;
+    
+    const updatedDay = {
+      ...optimizeModalDay,
+      items: optimizedItems
+    };
+
+    if (isEditing) {
+      const updatedDays = days.map(d => d.dayNumber === updatedDay.dayNumber ? updatedDay : d);
+      setDays(updatedDays);
+    } else {
+      const updatedDays = activeItinerary!.days.map(d => d.dayNumber === updatedDay.dayNumber ? updatedDay : d);
+      const updatedItinerary = {
+        ...activeItinerary!,
+        days: updatedDays,
+        updatedAt: new Date().toISOString()
+      };
+      onSaveItinerary(updatedItinerary);
+      setActiveItinerary(updatedItinerary);
+    }
+
+    setOptimizeModalDay(null);
+    setOptimizedItems(null);
+    setOptimizationStats(null);
+
+    window.dispatchEvent(new CustomEvent("show-toast", {
+      detail: {
+        message: `Rute perjalanan Hari ke-${updatedDay.dayNumber} berhasil dioptimalkan dan disimpan!`,
+        type: "success"
+      }
+    }));
+  };
+
+  const handleOptimizeRoute = async () => {
+    if (!optimizeModalDay) return;
+    setIsOptimizing(true);
+
+    const dayItems = [...optimizeModalDay.items];
+    if (dayItems.length < 2) {
+      setIsOptimizing(false);
+      return;
+    }
+
+    let startCoords = { lat: -8.2045, lng: 111.0921 }; // Alun-Alun Pacitan
+
+    if (optimizeStartPoint === "gps") {
+      try {
+        const pos = await new Promise<GeolocationPosition>((resolve, reject) => {
+          navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 5000 });
+        });
+        startCoords = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+      } catch (error) {
+        window.dispatchEvent(new CustomEvent("show-toast", {
+          detail: { message: "Gagal mendeteksi lokasi GPS Anda. Menggunakan Alun-Alun Pacitan sebagai acuan awal.", type: "warning" }
+        }));
+      }
+    } else if (optimizeStartPoint === "center") {
+      startCoords = { lat: -8.2045, lng: 111.0921 };
+    } else if (optimizeStartPoint === "first") {
+      const firstLoc = locations.find(l => l.id === dayItems[0].locationId);
+      if (firstLoc) {
+        startCoords = firstLoc.coordinates;
+      }
+    }
+
+    const itemsToOptimize = [...dayItems];
+    let finalOrder: ItineraryItem[] = [];
+
+    const getDist = (lat1: number, lon1: number, lat2: number, lon2: number) => {
+      const R = 6371;
+      const dLat = ((lat2 - lat1) * Math.PI) / 180;
+      const dLon = ((lon2 - lon1) * Math.PI) / 180;
+      const a =
+        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos((lat1 * Math.PI) / 180) *
+          Math.cos((lat2 * Math.PI) / 180) *
+          Math.sin(dLon / 2) *
+          Math.sin(dLon / 2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      return R * c;
+    };
+
+    let originalDistance = 0;
+    for (let i = 0; i < dayItems.length - 1; i++) {
+      const locA = locations.find(l => l.id === dayItems[i].locationId);
+      const locB = locations.find(l => l.id === dayItems[i + 1].locationId);
+      if (locA && locB) {
+        originalDistance += getDist(locA.coordinates.lat, locA.coordinates.lng, locB.coordinates.lat, locB.coordinates.lng);
+      }
+    }
+
+    if (optimizeStartPoint === "first") {
+      const firstItem = itemsToOptimize[0];
+      const remainingItems = itemsToOptimize.slice(1);
+      
+      if (remainingItems.length <= 8) {
+        let bestPath: ItineraryItem[] = [];
+        let minPathDist = Infinity;
+
+        const permute = (arr: ItineraryItem[], m: ItineraryItem[] = []) => {
+          if (arr.length === 0) {
+            let curDist = 0;
+            let prevLoc = locations.find(l => l.id === firstItem.locationId);
+            for (let i = 0; i < m.length; i++) {
+              const curLoc = locations.find(l => l.id === m[i].locationId);
+              if (prevLoc && curLoc) {
+                curDist += getDist(prevLoc.coordinates.lat, prevLoc.coordinates.lng, curLoc.coordinates.lat, curLoc.coordinates.lng);
+              }
+              prevLoc = curLoc;
+            }
+            if (curDist < minPathDist) {
+              minPathDist = curDist;
+              bestPath = m;
+            }
+          } else {
+            for (let i = 0; i < arr.length; i++) {
+              const curr = arr.slice();
+              const next = curr.splice(i, 1);
+              permute(curr.slice(), m.concat(next));
+            }
+          }
+        };
+
+        permute(remainingItems);
+        finalOrder = [firstItem, ...bestPath];
+      } else {
+        const unvisited = [...remainingItems];
+        finalOrder.push(firstItem);
+        let currentLoc = locations.find(l => l.id === firstItem.locationId);
+
+        while (unvisited.length > 0) {
+          let nextBestIdx = -1;
+          let minD = Infinity;
+          for (let i = 0; i < unvisited.length; i++) {
+            const locB = locations.find(l => l.id === unvisited[i].locationId);
+            if (currentLoc && locB) {
+              const d = getDist(currentLoc.coordinates.lat, currentLoc.coordinates.lng, locB.coordinates.lat, locB.coordinates.lng);
+              if (d < minD) {
+                minD = d;
+                nextBestIdx = i;
+              }
+            }
+          }
+          if (nextBestIdx !== -1) {
+            finalOrder.push(unvisited[nextBestIdx]);
+            currentLoc = locations.find(l => l.id === unvisited[nextBestIdx].locationId);
+            unvisited.splice(nextBestIdx, 1);
+          } else {
+            finalOrder.push(unvisited[0]);
+            unvisited.splice(0, 1);
+          }
+        }
+      }
+    } else {
+      const unvisited = [...itemsToOptimize];
+      let currentCoords = startCoords;
+
+      while (unvisited.length > 0) {
+        let nextBestIdx = -1;
+        let minD = Infinity;
+        for (let i = 0; i < unvisited.length; i++) {
+          const locB = locations.find(l => l.id === unvisited[i].locationId);
+          if (locB) {
+            const d = getDist(currentCoords.lat, currentCoords.lng, locB.coordinates.lat, locB.coordinates.lng);
+            if (d < minD) {
+              minD = d;
+              nextBestIdx = i;
+            }
+          }
+        }
+        if (nextBestIdx !== -1) {
+          finalOrder.push(unvisited[nextBestIdx]);
+          const chosenLoc = locations.find(l => l.id === unvisited[nextBestIdx].locationId);
+          if (chosenLoc) currentCoords = chosenLoc.coordinates;
+          unvisited.splice(nextBestIdx, 1);
+        } else {
+          finalOrder.push(unvisited[0]);
+          unvisited.splice(0, 1);
+        }
+      }
+    }
+
+    let optimizedDistance = 0;
+    for (let i = 0; i < finalOrder.length - 1; i++) {
+      const locA = locations.find(l => l.id === finalOrder[i].locationId);
+      const locB = locations.find(l => l.id === finalOrder[i + 1].locationId);
+      if (locA && locB) {
+        optimizedDistance += getDist(locA.coordinates.lat, locA.coordinates.lng, locB.coordinates.lat, locB.coordinates.lng);
+      }
+    }
+
+    const diff = originalDistance - optimizedDistance;
+    const improvementPercent = originalDistance > 0 ? Math.max(0, Math.round((diff / originalDistance) * 100)) : 0;
+
+    const timeSlots = dayItems.map(item => item.timeSlot);
+    const updatedFinalOrder = finalOrder.map((item, idx) => ({
+      ...item,
+      timeSlot: timeSlots[idx] || item.timeSlot
+    }));
+
+    setOptimizedItems(updatedFinalOrder);
+    setOptimizationStats({
+      originalDistance: Number(originalDistance.toFixed(1)),
+      optimizedDistance: Number(optimizedDistance.toFixed(1)),
+      improvementPercent
+    });
+    setIsOptimizing(false);
+  };
 
   const handleSortDayItems = async (dayIndex: number, order: "closest" | "farthest") => {
     const day = days[dayIndex];
@@ -536,7 +758,7 @@ export default function ItineraryBuilder({
                           <option value="first">Destinasi Pertama Saat Ini</option>
                         </select>
                       </div>
-                      <div className="flex gap-2 w-full sm:w-auto">
+                      <div className="flex flex-wrap gap-2 w-full sm:w-auto">
                         <button
                           type="button"
                           onClick={() => handleSortDayItems(dIdx, "closest")}
@@ -570,6 +792,20 @@ export default function ItineraryBuilder({
                             <ArrowUp size={12} />
                           )}
                           <span>Terjauh → Terdekat</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setOptimizeModalDay(day);
+                            setOptimizeStartPoint("first");
+                            setOptimizedItems(null);
+                            setOptimizationStats(null);
+                          }}
+                          className="flex-1 sm:flex-initial font-bold px-3 py-1.5 rounded-lg text-xs transition flex items-center justify-center gap-1.5 cursor-pointer shadow-md bg-teal-600 hover:bg-teal-700 text-white border border-teal-500"
+                          title="Optimalkan rute dengan TSP (Traveling Salesperson Problem)"
+                        >
+                          <Route size={12} />
+                          <span>Optimasi Rute (TSP)</span>
                         </button>
                       </div>
                     </div>
@@ -615,7 +851,9 @@ export default function ItineraryBuilder({
 
                             {(() => {
                               const activeFilter = rowCategoryFilter[`${dIdx}_${iIdx}`] || "semua";
-                              const filteredLocs = locations.filter(loc => {
+                              const safeLocs = Array.isArray(locations) ? locations : [];
+                              const filteredLocs = safeLocs.filter(loc => {
+                                if (!loc) return false;
                                 // Always include the currently selected location so it is visible and not reset
                                 if (loc.id === item.locationId) return true;
                                 if (activeFilter === "semua") return true;
@@ -802,6 +1040,35 @@ export default function ItineraryBuilder({
                       </div>
                     ) : (
                       <div className="space-y-4">
+                        {activeDayObj.items.length >= 2 && (
+                          <div className="bg-gradient-to-r from-teal-50 to-emerald-50 dark:from-slate-900/50 dark:to-emerald-950/20 border border-teal-100 dark:border-slate-800 p-3.5 rounded-xl flex items-center justify-between gap-4">
+                            <div className="flex items-center gap-2">
+                              <span className="p-1.5 bg-teal-100 dark:bg-teal-950/50 text-teal-700 dark:text-teal-400 rounded-lg">
+                                <Route size={14} className="animate-pulse" />
+                              </span>
+                              <div className="text-left">
+                                <h5 className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                                  Optimasi Rute Cerdas (TSP)
+                                </h5>
+                                <p className="text-[10px] text-slate-500 dark:text-slate-400">
+                                  Kalkulasikan urutan destinasi paling hemat waktu & jarak tempuh untuk Hari {activeDayTab}.
+                                </p>
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setOptimizeModalDay(activeDayObj);
+                                setOptimizeStartPoint("first");
+                                setOptimizedItems(null);
+                                setOptimizationStats(null);
+                              }}
+                              className="bg-teal-600 hover:bg-teal-700 text-white text-[11px] font-bold px-3 py-1.5 rounded-lg transition-all shadow-xs hover:shadow-md cursor-pointer shrink-0"
+                            >
+                              Optimalkan Rute
+                            </button>
+                          </div>
+                        )}
                         {activeDayObj.items.map((item, idx) => {
                           const loc = locations.find((l) => l.id === item.locationId);
                           if (!loc) return null;
@@ -1003,6 +1270,210 @@ export default function ItineraryBuilder({
               >
                 <ExternalLink size={13} /> Buka Tautan
               </a>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Route Optimization Modal (TSP) */}
+      {optimizeModalDay && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/65 backdrop-blur-xs p-4 animate-fadeIn">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 max-w-xl w-full p-6 relative flex flex-col max-h-[90vh]">
+            <button
+              onClick={() => {
+                setOptimizeModalDay(null);
+                setOptimizedItems(null);
+                setOptimizationStats(null);
+              }}
+              className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1.5 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
+            >
+              <X size={18} />
+            </button>
+
+            <div className="flex items-center gap-3 border-b border-slate-100 dark:border-slate-800 pb-4 mb-4">
+              <div className="p-3 bg-teal-50 dark:bg-teal-950/50 text-teal-600 dark:text-teal-400 rounded-xl border border-teal-100 dark:border-teal-900/50">
+                <Route size={24} />
+              </div>
+              <div className="text-left">
+                <h3 className="font-display font-bold text-slate-800 dark:text-slate-100 text-base">Optimasi Rute Perjalanan</h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Hari Ke-{optimizeModalDay.dayNumber} • {optimizeModalDay.items.length} Destinasi Wisata
+                </p>
+              </div>
+            </div>
+
+            <div className="flex-1 overflow-y-auto pr-1 space-y-4 text-left">
+              {!optimizationStats ? (
+                // Step 1: Config & Triggers
+                <div className="space-y-4">
+                  <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
+                    Sistem akan menghitung semua kemungkinan rute perjalanan menggunakan formula matematika koordinat bumi (Haversine) untuk memberikan rute kunjungan paling pendek, efisien, dan berurutan secara logis.
+                  </p>
+
+                  <div className="space-y-2 bg-slate-50 dark:bg-slate-950 border border-slate-200/80 dark:border-slate-800 p-4 rounded-xl">
+                    <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block">
+                      📍 Tentukan Titik Awal Perjalanan:
+                    </label>
+                    <div className="grid grid-cols-1 gap-2.5 mt-2">
+                      <label className={`flex items-start gap-2.5 p-3 rounded-lg border cursor-pointer transition ${
+                        optimizeStartPoint === "first"
+                          ? "border-teal-500 bg-teal-50/20 dark:bg-teal-950/20 text-teal-900 dark:text-teal-300"
+                          : "border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-850"
+                      }`}>
+                        <input
+                          type="radio"
+                          name="optimizeStart"
+                          value="first"
+                          checked={optimizeStartPoint === "first"}
+                          onChange={() => setOptimizeStartPoint("first")}
+                          className="mt-0.5 text-teal-600 accent-teal-600"
+                        />
+                        <div className="text-left">
+                          <span className="text-xs font-bold block">Tetap gunakan destinasi pertama saat ini</span>
+                          <span className="text-[10px] text-slate-500 dark:text-slate-400 block mt-0.5">
+                            Destinasi ke-1 tetap di awal, sistem hanya akan merapikan urutan destinasi berikutnya.
+                          </span>
+                        </div>
+                      </label>
+
+                      <label className={`flex items-start gap-2.5 p-3 rounded-lg border cursor-pointer transition ${
+                        optimizeStartPoint === "center"
+                          ? "border-teal-500 bg-teal-50/20 dark:bg-teal-950/20 text-teal-900 dark:text-teal-300"
+                          : "border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-850"
+                      }`}>
+                        <input
+                          type="radio"
+                          name="optimizeStart"
+                          value="center"
+                          checked={optimizeStartPoint === "center"}
+                          onChange={() => setOptimizeStartPoint("center")}
+                          className="mt-0.5 text-teal-600 accent-teal-600"
+                        />
+                        <div className="text-left">
+                          <span className="text-xs font-bold block">Mulai dari Alun-Alun Pacitan (Pusat Kota)</span>
+                          <span className="text-[10px] text-slate-500 dark:text-slate-400 block mt-0.5">
+                            Mengatur seluruh destinasi secara berurutan dihitung dari pusat kota Alun-Alun Pacitan.
+                          </span>
+                        </div>
+                      </label>
+
+                      <label className={`flex items-start gap-2.5 p-3 rounded-lg border cursor-pointer transition ${
+                        optimizeStartPoint === "gps"
+                          ? "border-teal-500 bg-teal-50/20 dark:bg-teal-950/20 text-teal-900 dark:text-teal-300"
+                          : "border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-850"
+                      }`}>
+                        <input
+                          type="radio"
+                          name="optimizeStart"
+                          value="gps"
+                          checked={optimizeStartPoint === "gps"}
+                          onChange={() => setOptimizeStartPoint("gps")}
+                          className="mt-0.5 text-teal-600 accent-teal-600"
+                        />
+                        <div className="text-left">
+                          <span className="text-xs font-bold block">Mulai dari GPS Lokasi Saya Sekarang</span>
+                          <span className="text-[10px] text-slate-500 dark:text-slate-400 block mt-0.5">
+                            Menghitung urutan terbaik secara real-time berdasarkan titik koordinat GPS fisik Anda sekarang.
+                          </span>
+                        </div>
+                      </label>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={handleOptimizeRoute}
+                    disabled={isOptimizing}
+                    className="w-full bg-teal-600 hover:bg-teal-700 text-white font-bold py-3 px-4 rounded-xl transition flex items-center justify-center gap-2 cursor-pointer shadow-md disabled:opacity-50"
+                  >
+                    {isOptimizing ? (
+                      <span className="flex items-center gap-2">
+                        <svg className="animate-spin h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                        </svg>
+                        Mengkalkulasi Rute TSP...
+                      </span>
+                    ) : (
+                      <>
+                        <Route size={16} /> Mulai Optimasi Rute
+                      </>
+                    )}
+                  </button>
+                </div>
+              ) : (
+                // Step 2: Compare Stats & Preview Results
+                <div className="space-y-4">
+                  {/* Improvement Banner card */}
+                  <div className="bg-gradient-to-r from-emerald-500 to-teal-600 text-white p-4 rounded-xl shadow-xs text-left">
+                    <span className="text-[10px] bg-white/20 font-mono font-black tracking-wider uppercase px-2 py-0.5 rounded-full">
+                      🎉 Hasil Optimasi Sukses!
+                    </span>
+                    <div className="grid grid-cols-3 gap-2 mt-3 text-center border-t border-white/20 pt-3">
+                      <div>
+                        <span className="text-[10px] block opacity-85">Jarak Asli</span>
+                        <span className="text-sm font-black font-mono block mt-0.5">{optimizationStats.originalDistance} km</span>
+                      </div>
+                      <div className="border-x border-white/20">
+                        <span className="text-[10px] block opacity-85">Jarak Optimal</span>
+                        <span className="text-sm font-black font-mono block mt-0.5 text-emerald-100">{optimizationStats.optimizedDistance} km</span>
+                      </div>
+                      <div>
+                        <span className="text-[10px] block opacity-85">Kehematan Rute</span>
+                        <span className="text-sm font-black font-mono block mt-0.5 text-emerald-100 bg-white/20 rounded px-1 max-w-[50px] mx-auto">
+                          +{optimizationStats.improvementPercent}%
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Urutan Route List Comparison */}
+                  <div className="space-y-2.5 text-left">
+                    <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block">
+                      Urutan Rute Rekomendasi Tercepat:
+                    </label>
+                    <div className="border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden bg-slate-50 dark:bg-slate-950 divide-y divide-slate-100 dark:divide-slate-900">
+                      {optimizedItems?.map((item, index) => {
+                        const loc = locations.find(l => l.id === item.locationId);
+                        if (!loc) return null;
+                        return (
+                          <div key={index} className="flex items-center gap-3 p-3 text-xs">
+                            <span className="w-5.5 h-5.5 rounded-full bg-teal-600 dark:bg-indigo-600 text-white font-mono font-bold flex items-center justify-center shrink-0">
+                              {index + 1}
+                            </span>
+                            <div className="flex-1 truncate text-left">
+                              <span className="font-bold text-slate-800 dark:text-slate-200 block truncate">{loc.name}</span>
+                              <span className="text-[10px] text-slate-400 block mt-0.5 truncate">{loc.address}</span>
+                            </div>
+                            {item.timeSlot && (
+                              <span className="text-[10px] font-mono text-slate-500 bg-slate-100 dark:bg-slate-900 px-2 py-0.5 rounded-full shrink-0 font-semibold">
+                                🕒 {item.timeSlot}
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2 pt-2">
+                    <button
+                      onClick={() => {
+                        setOptimizedItems(null);
+                        setOptimizationStats(null);
+                      }}
+                      className="border border-slate-300 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 font-bold py-2.5 px-4 rounded-xl text-xs transition cursor-pointer text-center bg-white dark:bg-slate-900"
+                    >
+                      Ulangi Kalkulasi
+                    </button>
+                    <button
+                      onClick={handleApplyOptimization}
+                      className="bg-teal-600 hover:bg-teal-700 text-white font-bold py-2.5 px-4 rounded-xl text-xs transition cursor-pointer shadow-md text-center"
+                    >
+                      Terapkan & Simpan
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>

@@ -1,5 +1,9 @@
 import { useState, useEffect, useRef } from "react";
 import L from "leaflet";
+import "leaflet.markercluster";
+import "leaflet/dist/leaflet.css";
+import "leaflet.markercluster/dist/MarkerCluster.css";
+import "leaflet.markercluster/dist/MarkerCluster.Default.css";
 import { Location, ItineraryItem } from "../types";
 import { 
   Compass, ExternalLink, Navigation, Locate, AlertCircle, RefreshCw,
@@ -146,7 +150,7 @@ function getManeuverIcon(type: string, modifier?: string) {
 export default function ItineraryMap({ items, locations, activeDay }: ItineraryMapProps) {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
-  const markerGroupRef = useRef<L.LayerGroup | null>(null);
+  const markerClusterGroupRef = useRef<L.MarkerClusterGroup | null>(null);
   const polylinesRef = useRef<L.Polyline[]>([]);
 
   // User Geolocation State
@@ -162,8 +166,10 @@ export default function ItineraryMap({ items, locations, activeDay }: ItineraryM
   const [activeSegmentIndex, setActiveSegmentIndex] = useState<number | null>(null);
 
   // Get valid locations in sequence for the day
-  const routeLocations = items
-    .map((item) => locations.find((l) => l.id === item.locationId))
+  const safeItems = Array.isArray(items) ? items : [];
+  const safeLocations = Array.isArray(locations) ? locations : [];
+  const routeLocations = safeItems
+    .map((item) => safeLocations.find((l) => l && item && l.id === item.locationId))
     .filter((loc): loc is Location => !!loc);
 
   // Initialize Leaflet Map
@@ -187,7 +193,22 @@ export default function ItineraryMap({ items, locations, activeDay }: ItineraryM
       maxZoom: 19
     }).addTo(map);
 
-    markerGroupRef.current = L.layerGroup().addTo(map);
+    // Create marker cluster group
+    // @ts-ignore
+    markerClusterGroupRef.current = L.markerClusterGroup({
+      spiderfyOnMaxZoom: true,
+      showCoverageOnHover: false,
+      zoomToBoundsOnClick: true,
+      maxClusterRadius: 50,
+      iconCreateFunction: function(cluster: any) {
+        const childCount = cluster.getChildCount();
+        return new L.DivIcon({ 
+          html: `<div class="flex items-center justify-center w-10 h-10 bg-teal-600 text-white font-bold rounded-full border-[3px] border-white shadow-md"><span>${childCount}</span></div>`, 
+          className: 'custom-cluster-icon', 
+          iconSize: [40, 40] 
+        });
+      }
+    }).addTo(map);
     mapInstanceRef.current = map;
 
     // Auto resize map when container size changes
@@ -394,8 +415,8 @@ export default function ItineraryMap({ items, locations, activeDay }: ItineraryM
   // Handle map overlays (markers & polylines) whenever path/markers change
   useEffect(() => {
     const map = mapInstanceRef.current;
-    const markerGroup = markerGroupRef.current;
-    if (!map || !markerGroup) return;
+    const clusterGroup = markerClusterGroupRef.current;
+    if (!map || !clusterGroup) return;
 
     // Stop any active animations to prevent calculations on changing layers
     try {
@@ -405,7 +426,7 @@ export default function ItineraryMap({ items, locations, activeDay }: ItineraryM
     }
 
     // Clear existing
-    markerGroup.clearLayers();
+    clusterGroup.clearLayers();
     polylinesRef.current.forEach((pl) => {
       try {
         pl.remove();
@@ -440,13 +461,42 @@ export default function ItineraryMap({ items, locations, activeDay }: ItineraryM
           <p class="text-[9px] text-slate-500 mt-0.5">Mulai navigasi dari koordinat GPS Anda</p>
         </div>
       `, { maxWidth: 160 });
-      userMarker.addTo(markerGroup);
+      userMarker.addTo(clusterGroup);
     }
 
-    // Plot Route Stop Markers
+    // Array to track placed marker coordinates to prevent overlapping
+    const placedCoordinates: { lat: number; lng: number }[] = [];
+
     routeLocations.forEach((loc, index) => {
-      const lat = loc.coordinates.lat;
-      const lng = loc.coordinates.lng;
+      let lat = loc.coordinates.lat;
+      let lng = loc.coordinates.lng;
+
+      let attempt = 0;
+      const minDistance = 0.0035; // increased minimum distance significantly
+      let overlapping = true;
+
+      while (overlapping && attempt < 30) {
+        overlapping = false;
+        for (const placed of placedCoordinates) {
+          const dLat = placed.lat - lat;
+          const dLng = placed.lng - lng;
+          const dist = Math.sqrt(dLat * dLat + dLng * dLng);
+          if (dist < minDistance) {
+            overlapping = true;
+            break;
+          }
+        }
+
+        if (overlapping) {
+          attempt++;
+          const angle = attempt * 137.5 * (Math.PI / 180);
+          const radius = 0.0015 * Math.sqrt(attempt);
+          lat = loc.coordinates.lat + radius * Math.cos(angle);
+          lng = loc.coordinates.lng + radius * Math.sin(angle);
+        }
+      }
+
+      placedCoordinates.push({ lat, lng });
 
       const markerHtml = `
         <div class="relative flex flex-col items-center">
@@ -476,7 +526,7 @@ export default function ItineraryMap({ items, locations, activeDay }: ItineraryM
         </div>
       `, { maxWidth: 200 });
 
-      marker.addTo(markerGroup);
+      marker.addTo(clusterGroup);
     });
 
     // Draw real route path on map

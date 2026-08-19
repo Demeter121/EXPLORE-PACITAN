@@ -4,9 +4,10 @@ import { createPortal } from "react-dom";
 import { HashRouter as Router, Routes, Route, Link, useNavigate, useParams, Navigate, useLocation } from "react-router-dom";
 import { 
   MapPin, Star, Calendar, Clock, Phone, AlertCircle, CheckCircle, XCircle, Search, 
-  Map, List, Compass, LayoutDashboard, Database, History, ChevronRight, MessageSquare, 
+  List, Compass, LayoutDashboard, Database, History, ChevronRight, MessageSquare, 
   ArrowLeft, Eye, Edit3, Clipboard, HelpCircle, EyeOff, Check, Image, AlertTriangle,
-  Car, ArrowRight, Upload, Download, Users, Save, RotateCcw, Printer, Share2, Globe, ExternalLink, Crop, FileText, Bot, Power, Trash2
+  Car, ArrowRight, Upload, Download, Users, Save, RotateCcw, Printer, Share2, Globe, ExternalLink, Crop, FileText, Bot, Power, Trash2,
+  X, ChevronLeft, ZoomIn, ZoomOut, FileSpreadsheet
 } from "lucide-react";
 
 import { Location, User, LocationSubmission, Itinerary, Review, ModerationLog, LocationCategory, TourPackage, UserRole, AdminNotification } from "./types";
@@ -24,8 +25,10 @@ import ImageCropperModal from "./components/ImageCropperModal";
 import AdminNotificationsManageView from "./components/AdminNotificationsManageView";
 import { AiChatbotWidget } from "./components/AiChatbotWidget";
 import { AiConfigModal } from "./components/AiConfigModal";
+import { GoogleSheetsModal } from "./components/GoogleSheetsModal";
 import { AiService } from "./lib/aiService";
 import { exportAdminPdfReport } from "./lib/pdfExport";
+import { LocationGridSkeleton, LocationDetailSkeleton } from "./components/SkeletonLoader";
 
 // Global Helper for triggering toasts from components without prop drilling
 export function triggerToast(message: string, type: "success" | "error" | "info" = "success") {
@@ -140,12 +143,12 @@ const CATEGORY_LABELS: Record<LocationCategory, string> = {
 };
 
 const CATEGORY_COLORS: Record<LocationCategory, string> = {
-  wisata: "bg-teal-105 text-teal-800 border-teal-200",
-  penginapan: "bg-amber-100 text-amber-800 border-amber-200",
-  makan: "bg-rose-100 text-rose-800 border-rose-200",
-  coffeeshop: "bg-purple-100 text-purple-800 border-purple-200",
-  belanja: "bg-pink-100 text-pink-800 border-pink-200",
-  lainnya: "bg-slate-100 text-slate-800 border-slate-200"
+  wisata: "bg-teal-100 text-teal-800 border-teal-200 dark:bg-teal-950/80 dark:text-teal-300 dark:border-teal-800",
+  penginapan: "bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-950/80 dark:text-amber-300 dark:border-amber-800",
+  makan: "bg-rose-100 text-rose-800 border-rose-200 dark:bg-rose-950/80 dark:text-rose-300 dark:border-rose-800",
+  coffeeshop: "bg-purple-100 text-purple-800 border-purple-200 dark:bg-purple-950/80 dark:text-purple-300 dark:border-purple-800",
+  belanja: "bg-pink-100 text-pink-800 border-pink-200 dark:bg-pink-950/80 dark:text-pink-300 dark:border-pink-800",
+  lainnya: "bg-slate-100 text-slate-800 border-slate-200 dark:bg-slate-800 dark:text-slate-200 dark:border-slate-700"
 };
 
 const checkIsIvanOrAdmin = (email: string = "", name: string = "", id: string = "") => {
@@ -154,23 +157,82 @@ const checkIsIvanOrAdmin = (email: string = "", name: string = "", id: string = 
 
 export default function App() {
   // 1. Core States connected to mock database
-  const [locations, setLocations] = useState<Location[]>(() => LocalDB.getLocations());
+  const [locations, setLocations] = useState<Location[]>(() => LocalDB.getLocations() || []);
   const [submissions, setSubmissions] = useState<LocationSubmission[]>(() => 
-    LocalDB.getSubmissions().filter(s => s.submittedBy !== "guest_empty")
+    (LocalDB.getSubmissions() || []).filter(s => s && s.submittedBy !== "guest_empty")
   );
   const [reviews, setReviews] = useState<Review[]>(() => 
-    LocalDB.getReviews().filter(r => r.userId !== "guest_empty" && r.userName !== "Tamu (Belum Login)")
+    (LocalDB.getReviews() || []).filter(r => r && r.userId !== "guest_empty" && r.userName !== "Tamu (Belum Login)")
   );
   const [itineraries, setItineraries] = useState<Itinerary[]>(() => 
-    LocalDB.getItineraries().filter(i => i.createdBy !== "guest_empty")
+    (LocalDB.getItineraries() || []).filter(i => i && i.createdBy !== "guest_empty")
   );
-  const [tourPackages, setTourPackages] = useState<TourPackage[]>(() => LocalDB.getTourPackages());
-  const [logs, setLogs] = useState<ModerationLog[]>(() => LocalDB.getLogs());
+  const [tourPackages, setTourPackages] = useState<TourPackage[]>(() => LocalDB.getTourPackages() || []);
+  const [logs, setLogs] = useState<ModerationLog[]>(() => LocalDB.getLogs() || []);
   const [currentUser, setCurrentUser] = useState<User>(() => LocalDB.getCurrentUser());
-  const [users, setUsers] = useState<User[]>(() => LocalDB.getUsers());
-  const [notifications, setNotifications] = useState<AdminNotification[]>(() => LocalDB.getNotifications());
+  const [users, setUsers] = useState<User[]>(() => LocalDB.getUsers() || []);
+  const [notifications, setNotifications] = useState<AdminNotification[]>(() => LocalDB.getNotifications() || []);
   const [realGoogleUser, setRealGoogleUser] = useState<User | null>(null);
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" | "info" } | null>(null);
+  const [isSheetsModalOpen, setIsSheetsModalOpen] = useState(false);
+
+  const handleSheetsImportSuccess = (importedLocations: Location[], mode: "replace" | "merge") => {
+    const dedupedImported = LocalDB.deduplicateLocations(importedLocations);
+    if (mode === "replace") {
+      setLocations(dedupedImported);
+      LocalDB.saveLocations(dedupedImported);
+      triggerToast(`Database berhasil digantikan dengan ${dedupedImported.length} destinasi dari Google Sheets!`, "success");
+    } else {
+      setLocations((prev: Location[]) => {
+        const safePrev = Array.isArray(prev) ? prev : [];
+        const merged = LocalDB.deduplicateLocations([...safePrev, ...dedupedImported]);
+        LocalDB.saveLocations(merged);
+        return merged;
+      });
+      triggerToast(`Berhasil menggabungkan ${dedupedImported.length} destinasi dari Google Sheets!`, "success");
+    }
+  };
+
+  // Handler to delete a location from map and all references
+  const handleDeleteLocation = (locationId: string) => {
+    const safeLocs = Array.isArray(locations) ? locations : [];
+    const targetLoc = safeLocs.find((l) => l && l.id === locationId);
+    const targetName = targetLoc?.name || "Destinasi";
+
+    // 1. Remove from locations list & local storage
+    setLocations((prev) => {
+      const safePrev = Array.isArray(prev) ? prev : [];
+      const updated = safePrev.filter((l) => l && l.id !== locationId);
+      LocalDB.saveLocations(updated);
+      return updated;
+    });
+
+    // 2. Remove references in itineraries
+    setItineraries((prev) => {
+      const safePrev = Array.isArray(prev) ? prev : [];
+      const updated = safePrev.map((itin) => ({
+        ...itin,
+        items: Array.isArray(itin?.items) ? itin.items.filter((item) => item && item.locationId !== locationId) : []
+      }));
+      LocalDB.saveItineraries(updated);
+      return updated;
+    });
+
+    // 3. Log deletion for audit
+    const newLog: ModerationLog = {
+      id: `log_del_${Date.now()}`,
+      action: "reject",
+      submissionId: locationId,
+      targetName: targetName,
+      adminId: currentUser.id,
+      adminEmail: currentUser.email,
+      timestamp: new Date().toISOString(),
+      reason: "Data lokasi berhasil dihapus dari sistem maps."
+    };
+    setLogs((prev) => [newLog, ...prev]);
+
+    triggerToast(`"${targetName}" berhasil dihapus dari data maps!`, "success");
+  };
 
   const authProcessingRef = useRef<string | null>(null);
   const isManualLoginRef = useRef<boolean>(false);
@@ -229,41 +291,6 @@ export default function App() {
       const registeredUsers = LocalDB.getUsers();
       const cleanEmail = (email || "").trim().toLowerCase();
 
-      let firestoreUser: User | null = null;
-      try {
-        if (db) {
-          const userDocRef = doc(db, "users", uid);
-          const userSnapshot = await getDoc(userDocRef);
-          
-          if (userSnapshot.exists()) {
-            firestoreUser = userSnapshot.data() as User;
-            
-            // Enforce admin role in Firestore
-            if (cleanEmail === "ivanfadhilamaulana1@gmail.com" || uid === "21oQqjjDX0Xfs0ddKRsVJlsxGqm1") {
-              if (firestoreUser.role !== "admin") {
-                firestoreUser.role = "admin";
-                await setDoc(userDocRef, { ...firestoreUser, role: "admin" }, { merge: true });
-              }
-            }
-          } else {
-            // New user - create document at /users/{uid}
-            const defaultRole: UserRole = (cleanEmail === "ivanfadhilamaulana1@gmail.com" || uid === "21oQqjjDX0Xfs0ddKRsVJlsxGqm1") ? "admin" : (roleOverride || "user");
-            const newUserDoc: User = {
-              id: uid,
-              name: name || email.split("@")[0] || "Pengguna Baru",
-              email: email || "",
-              role: defaultRole,
-              avatarUrl: photoUrl || `https://api.dicebear.com/7.x/adventurer/svg?seed=${uid}`,
-              managedLocations: []
-            };
-            await setDoc(userDocRef, newUserDoc);
-            firestoreUser = newUserDoc;
-          }
-        }
-      } catch (e) {
-        console.error("Firestore error in processGoogleUser:", e);
-      }
-
       const isIvanAdmin = isDefaultAdminUtama(cleanEmail, name || "", uid || "");
       const isKoor = isDefaultKoordinatorPengelola(cleanEmail, name || "", uid || "");
       const isMitra = isDefaultMitraPengelola(cleanEmail, name || "", uid || "");
@@ -279,23 +306,16 @@ export default function App() {
       );
       const existingUser = existingUserIndex >= 0 ? registeredUsers[existingUserIndex] : null;
 
-      let finalUser: User;
-      if (firestoreUser) {
-        finalUser = {
-          ...firestoreUser,
-          id: uid || firestoreUser.id
-        };
-      } else {
-        const rawUser: User = {
-          id: existingUser ? existingUser.id : (uid || `google_${Date.now()}`),
-          name: (name || "").trim() || existingUser?.name || cleanEmail.split("@")[0].replace(/[._-]/g, " ").replace(/\b\w/g, c => c.toUpperCase()) || "Pengguna Google",
-          email: cleanEmail,
-          role: existingUser ? existingUser.role : (roleOverride || "user"),
-          avatarUrl: photoUrl || existingUser?.avatarUrl || `https://api.dicebear.com/7.x/adventurer/svg?seed=${uid || cleanEmail}`,
-          managedLocations: existingUser?.managedLocations || []
-        };
-        finalUser = enforceDefaultAccount(rawUser);
-      }
+      const rawUser: User = {
+        id: existingUser ? existingUser.id : (uid || `google_${Date.now()}`),
+        name: (name || "").trim() || existingUser?.name || cleanEmail.split("@")[0].replace(/[._-]/g, " ").replace(/\b\w/g, c => c.toUpperCase()) || "Pengguna Google",
+        email: cleanEmail,
+        role: existingUser ? existingUser.role : (roleOverride || (isIvanAdmin ? "admin" : "user")),
+        avatarUrl: photoUrl || existingUser?.avatarUrl || `https://api.dicebear.com/7.x/adventurer/svg?seed=${uid || cleanEmail}`,
+        managedLocations: existingUser?.managedLocations || []
+      };
+      
+      let finalUser = enforceDefaultAccount(rawUser);
 
       if (cleanEmail === "ivanfadhilamaulana1@gmail.com" || (uid && uid === "21oQqjjDX0Xfs0ddKRsVJlsxGqm1")) {
         finalUser.role = "admin";
@@ -306,6 +326,7 @@ export default function App() {
         }
       }
 
+      // Update state and persistence immediately
       let updatedUsers: User[];
       if (existingUserIndex >= 0) {
         updatedUsers = [...registeredUsers];
@@ -323,6 +344,44 @@ export default function App() {
       if (showToast) {
         triggerToast(`Selamat datang, ${finalUser.name}! (Login Google)`, "success");
       }
+
+      // Asynchronously synchronize with Firestore in background
+      if (db) {
+        try {
+          const userDocRef = doc(db, "users", uid);
+          const userSnapshot = await getDoc(userDocRef).catch(err => {
+            console.warn("Firestore user lookup fallback (offline/cached):", err?.message || err);
+            return null;
+          });
+          
+          if (userSnapshot && userSnapshot.exists()) {
+            const firestoreUser = userSnapshot.data() as User;
+            if (isIvanAdmin) {
+              if (firestoreUser.role !== "admin") {
+                await setDoc(userDocRef, { ...firestoreUser, role: "admin" }, { merge: true }).catch(() => {});
+              }
+            } else if (firestoreUser.role && firestoreUser.role !== finalUser.role) {
+              finalUser = { ...finalUser, role: firestoreUser.role };
+              setCurrentUser(finalUser);
+              LocalDB.saveCurrentUser(finalUser);
+            }
+          } else {
+            // Write user profile to Firestore
+            await setDoc(userDocRef, {
+              id: finalUser.id,
+              name: finalUser.name,
+              email: finalUser.email,
+              role: finalUser.role,
+              avatarUrl: finalUser.avatarUrl,
+              managedLocations: finalUser.managedLocations || []
+            }, { merge: true }).catch(err => {
+              console.warn("Non-blocking Firestore user profile write warning:", err?.message || err);
+            });
+          }
+        } catch (e) {
+          console.warn("Firestore sync in processGoogleUser completed safely:", e);
+        }
+      }
     } finally {
       authProcessingRef.current = null;
     }
@@ -337,7 +396,7 @@ export default function App() {
         const showToast = isManualLoginRef.current;
         isManualLoginRef.current = false; // Reset the manual flag
 
-        // Delegate to the shared helper to ensure Firestore is correctly upserted before setting state
+        // Delegate to the shared helper to ensure state is synchronized
         processGoogleUser(
           user.email || "",
           user.displayName || undefined,
@@ -361,12 +420,14 @@ export default function App() {
 
   const handleGoogleLogin = async () => {
     if (!auth) {
-      triggerToast("Layanan Google Auth tidak tersedia. Silakan hubungi admin atau periksa konfigurasi Firebase.", "error");
+      triggerToast("Layanan Google Auth sedang dipersiapkan. Silakan coba lagi.", "info");
       return;
     }
     try {
       if (googleProvider && typeof googleProvider.setCustomParameters === "function") {
-        googleProvider.setCustomParameters({});
+        googleProvider.setCustomParameters({
+          prompt: "select_account"
+        });
       }
       isManualLoginRef.current = true;
       console.log("[Auth Log] Memulai signInWithPopup...");
@@ -376,7 +437,6 @@ export default function App() {
         const userEmail = (result.user.email || "").trim().toLowerCase();
         console.log(`[Auth Log] Google Login Berhasil: ${userEmail}`);
         
-        // Await the correct upsert and synchronization process
         await processGoogleUser(
           result.user.email || "",
           result.user.displayName || result.user.email?.split("@")[0],
@@ -720,6 +780,7 @@ export default function App() {
           onRegisterUser={handleRegisterUser}
           onLoginUser={handleLoginUser}
           usersList={users}
+          onOpenSheetsModal={() => setIsSheetsModalOpen(true)}
         />
 
 
@@ -728,13 +789,14 @@ export default function App() {
         <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
           <Routes>
             {/* Public Area */}
-            <Route path="/" element={<PetaWisataView locations={locations} currentUser={currentUser} />} />
-            <Route path="/locations" element={<DaftarTempatView locations={locations} currentUser={currentUser} />} />
+            <Route path="/" element={<PetaWisataView locations={locations} currentUser={currentUser} onDeleteLocation={handleDeleteLocation} />} />
+            <Route path="/locations" element={<DaftarTempatView locations={locations} currentUser={currentUser} onDeleteLocation={handleDeleteLocation} />} />
             <Route path="/location/:id" element={
               <DetailTempatView 
                 locations={locations} 
                 reviews={reviews} 
                 currentUser={currentUser}
+                onDeleteLocation={handleDeleteLocation}
                 onAddReview={(rev) => {
                   if (rev.userId === "guest_empty" || rev.userName === "Tamu (Belum Login)") {
                     alert("Akun Tamu tidak diperkenankan mengirim ulasan.");
@@ -893,7 +955,8 @@ export default function App() {
                 reviews={reviews}
                 itineraries={itineraries}
                 logs={logs}
-                currentUser={currentUser} 
+                currentUser={currentUser}
+                onOpenSheetsModal={() => setIsSheetsModalOpen(true)}
               />
             } />
             <Route path="/admin/queue" element={
@@ -936,6 +999,8 @@ export default function App() {
               <AdminLocationsManageView 
                 locations={locations}
                 currentUser={currentUser}
+                onOpenSheetsModal={() => setIsSheetsModalOpen(true)}
+                onDeleteLocation={handleDeleteLocation}
                 onToggleStatus={(locId, active) => {
                   setLocations(prev => prev.map(l => {
                     if (l.id === locId) {
@@ -1016,6 +1081,16 @@ export default function App() {
         }}
       />
 
+      {/* Google Sheets Integration Modal */}
+      <GoogleSheetsModal
+        isOpen={isSheetsModalOpen}
+        onClose={() => setIsSheetsModalOpen(false)}
+        locations={locations}
+        onImportSuccess={handleSheetsImportSuccess}
+        currentUserId={currentUser.id}
+        language={currentUser.language || "id"}
+      />
+
     </Router>
   );
 }
@@ -1094,25 +1169,46 @@ function SeoRouteUpdater({ locations }: { locations: Location[] }) {
 /* =========================================================================
    PUBLIC DIRECTORY: 1. PetaWisataView (Index Route)
    ========================================================================= */
-function PetaWisataView({ locations, currentUser }: { locations: Location[]; currentUser: User }) {
+function PetaWisataView({ 
+  locations, 
+  currentUser,
+  onDeleteLocation
+}: { 
+  locations: Location[]; 
+  currentUser: User;
+  onDeleteLocation?: (locationId: string) => void;
+}) {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<"semua" | LocationCategory>("semua");
+  const [sortBy, setSortBy] = useState<"default" | "rating_desc" | "name_asc" | "name_desc">("default");
   const [selectedLocation, setSelectedLocation] = useState<Location | null>(null);
+  const [locationToDelete, setLocationToDelete] = useState<Location | null>(null);
   const navigate = useNavigate();
 
   // Filter approved locations
   const approvedLocations = locations.filter((l) => l.status === "approved");
 
-  const filteredLocations = approvedLocations.filter((loc) => {
+  let filteredLocations = approvedLocations.filter((loc) => {
+    const query = searchQuery.toLowerCase().trim();
     const matchesSearch = 
-      loc.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      loc.address.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      loc.description.toLowerCase().includes(searchQuery.toLowerCase());
+      !query ||
+      loc.name.toLowerCase().includes(query) ||
+      loc.address.toLowerCase().includes(query) ||
+      loc.description.toLowerCase().includes(query);
     
     const matchesCategory = selectedCategory === "semua" || loc.category === selectedCategory;
 
     return matchesSearch && matchesCategory;
   });
+
+  // Apply sorting
+  if (sortBy === "rating_desc") {
+    filteredLocations = [...filteredLocations].sort((a, b) => b.ratingAverage - a.ratingAverage);
+  } else if (sortBy === "name_asc") {
+    filteredLocations = [...filteredLocations].sort((a, b) => a.name.localeCompare(b.name));
+  } else if (sortBy === "name_desc") {
+    filteredLocations = [...filteredLocations].sort((a, b) => b.name.localeCompare(a.name));
+  }
 
   const categories: ("semua" | LocationCategory)[] = ["semua", "wisata", "penginapan", "makan", "coffeeshop", "belanja", "lainnya"];
 
@@ -1126,90 +1222,176 @@ function PetaWisataView({ locations, currentUser }: { locations: Location[]; cur
 
   return (
     <div className="space-y-6">
-      {/* Search Header Banner */}
-      <div className="bg-white rounded-2xl shadow-sm border border-slate-200/65 p-4 sm:p-6">
+      {/* Modal Konfirmasi Hapus Data Maps */}
+      {locationToDelete && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4 animate-in zoom-in-95 duration-200 text-slate-800 dark:text-slate-100">
+            <div className="w-12 h-12 rounded-2xl bg-rose-100 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 flex items-center justify-center mx-auto">
+              <Trash2 size={24} />
+            </div>
+            
+            <div className="text-center space-y-2">
+              <h3 className="font-display font-black text-slate-900 dark:text-slate-100 text-lg">
+                Hapus Data Lokasi Peta?
+              </h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                Apakah Anda yakin ingin menghapus destinasi <strong>"{locationToDelete.name}"</strong>? Data penanda pada peta, rincian koordinat, dan galeri tempat ini akan dihapus dari sistem.
+              </p>
+
+              <div className="flex items-center gap-3 p-3 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200/60 dark:border-slate-700 text-left mt-3">
+                <img
+                  src={getDirectImageUrl(locationToDelete.photos?.[0])}
+                  alt={locationToDelete.name}
+                  className="w-12 h-12 rounded-lg object-cover bg-slate-200 shrink-0"
+                  referrerPolicy="no-referrer"
+                />
+                <div className="min-w-0 flex-1">
+                  <span className={`px-1.5 py-0.2 rounded text-[8px] font-mono font-bold uppercase ${CATEGORY_COLORS[locationToDelete.category]}`}>
+                    {locationToDelete.category}
+                  </span>
+                  <h4 className="font-bold text-slate-800 dark:text-slate-200 text-xs truncate mt-0.5">{locationToDelete.name}</h4>
+                  <p className="text-[10px] text-slate-400 truncate">📍 {locationToDelete.address}</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 text-xs pt-2">
+              <button
+                type="button"
+                onClick={() => setLocationToDelete(null)}
+                className="px-4 py-2 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-xl text-slate-600 dark:text-slate-300 font-bold cursor-pointer transition"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (onDeleteLocation) {
+                    onDeleteLocation(locationToDelete.id);
+                  }
+                  if (selectedLocation?.id === locationToDelete.id) {
+                    setSelectedLocation(null);
+                  }
+                  setLocationToDelete(null);
+                }}
+                className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl font-bold flex items-center gap-1.5 cursor-pointer shadow-md shadow-rose-600/20 transition"
+              >
+                <Trash2 size={14} />
+                Ya, Hapus Lokasi
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Search Header Banner with elegant top accent border */}
+      <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-200/85 dark:border-slate-800 p-5 sm:p-6 relative overflow-hidden transition-all duration-300 hover:shadow-md">
+        <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-teal-500 via-indigo-500 to-amber-500"></div>
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
-            <h1 className="font-display font-black text-slate-800 text-2xl sm:text-3xl tracking-tight">🗺️ Eksplorasi Surga Bahari Pacitan</h1>
-            <p className="text-slate-500 text-xs sm:text-sm mt-1">
+            <h1 className="font-display font-black text-slate-800 dark:text-slate-100 text-2xl sm:text-3xl tracking-tight flex items-center gap-2">
+              <span>🗺️</span> Eksplorasi Surga Bahari Pacitan
+            </h1>
+            <p className="text-slate-500 dark:text-slate-400 text-xs sm:text-sm mt-1 leading-relaxed">
               Temukan pantai ombak internasional, goa purba karst megah, serta ragam penginapan pengisi waktu liburan tepercaya.
             </p>
           </div>
-          {/* Quick Stats */}
-          <div className="flex flex-wrap items-center gap-2 md:justify-end shrink-0">
-            <span className="flex items-center gap-1.5 bg-slate-50 dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 px-2.5 py-1 rounded-lg text-[11px] font-bold text-slate-500">
-              <span className="text-teal-600 text-xs">🍀</span> Wisata: <strong className="text-slate-800 dark:text-slate-200 font-extrabold">{approvedLocations.filter(l => l.category === 'wisata').length}</strong>
-            </span>
-            <span className="flex items-center gap-1.5 bg-slate-50 dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 px-2.5 py-1 rounded-lg text-[11px] font-bold text-slate-500">
-              <span className="text-amber-500 text-xs">🏨</span> Penginapan: <strong className="text-slate-800 dark:text-slate-200 font-extrabold">{approvedLocations.filter(l => l.category === 'penginapan').length}</strong>
-            </span>
-            <span className="flex items-center gap-1.5 bg-slate-50 dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 px-2.5 py-1 rounded-lg text-[11px] font-bold text-slate-500">
-              <span className="text-emerald-600 text-xs">🍛</span> Kuliner: <strong className="text-slate-800 dark:text-slate-200 font-extrabold">{approvedLocations.filter(l => l.category === 'makan').length}</strong>
-            </span>
-            <span className="flex items-center gap-1.5 bg-slate-50 dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 px-2.5 py-1 rounded-lg text-[11px] font-bold text-slate-500">
-              <span className="text-purple-650 text-xs">☕</span> Kafe: <strong className="text-slate-800 dark:text-slate-200 font-extrabold">{approvedLocations.filter(l => l.category === 'coffeeshop').length}</strong>
-            </span>
-            <span className="flex items-center gap-1.5 bg-slate-50 dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 px-2.5 py-1 rounded-lg text-[11px] font-bold text-slate-500">
-              <span className="text-rose-500 text-xs">📦</span> Lainnya: <strong className="text-slate-800 dark:text-slate-200 font-extrabold">{approvedLocations.filter(l => l.category === 'belanja' || l.category === 'lainnya').length}</strong>
-            </span>
-          </div>
         </div>
 
-        {/* Input box */}
-        <div className="mt-5">
-          <div className="relative">
-            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+        {/* Form Pencarian & Pengurutan */}
+        <div className="mt-5 grid grid-cols-1 md:grid-cols-12 gap-3">
+          <div className="md:col-span-8 relative group">
+            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-teal-600 transition-colors" size={18} />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Cari pantai klayar, rumah makan rujukan, penginapan terbaik..."
-              className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-pacitan-primary focus:bg-white font-medium"
+              placeholder="Cari nama pantai, goa, alamat, kafe, atau penginapan..."
+              className="w-full pl-10 pr-10 py-3 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl text-sm focus:outline-none focus:border-teal-600 focus:bg-white dark:focus:bg-slate-800 focus:ring-4 focus:ring-teal-100 dark:focus:ring-teal-950/25 transition-all font-medium placeholder-slate-400 text-slate-800 dark:text-slate-100"
             />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery("")}
+                className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1 rounded-full hover:bg-slate-200 dark:hover:bg-slate-700 transition"
+                title="Hapus teks pencarian"
+              >
+                <X size={15} />
+              </button>
+            )}
+          </div>
+
+          <div className="md:col-span-4 flex items-center gap-2">
+            <select
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value as any)}
+              className="w-full py-3 px-3.5 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl text-xs sm:text-sm font-bold text-slate-700 dark:text-slate-200 focus:outline-none focus:border-teal-600 cursor-pointer"
+            >
+              <option value="default">⚡ Urutan Standar</option>
+              <option value="rating_desc">⭐ Rating Tertinggi</option>
+              <option value="name_asc">🔤 Nama (A - Z)</option>
+              <option value="name_desc">🔤 Nama (Z - A)</option>
+            </select>
           </div>
         </div>
 
-        {/* Filtering Pills */}
-        <div className="flex flex-wrap gap-1.5 mt-4 pt-4 border-t border-slate-100">
-          {categories.map((cat) => (
+        {/* Filtering Pills with high-fidelity hover state and scale */}
+        <div className="flex flex-wrap items-center justify-between gap-2 mt-4 pt-4 border-t border-slate-100 dark:border-slate-800">
+          <div className="flex flex-wrap gap-1.5">
+            {categories.map((cat) => (
+              <button
+                key={cat}
+                onClick={() => setSelectedCategory(cat)}
+                className={`px-3.5 py-1.5 rounded-full text-xs font-bold uppercase tracking-wider transition-all cursor-pointer hover:scale-105 active:scale-95 duration-150 ${
+                  selectedCategory === cat
+                    ? "bg-teal-700 text-white shadow-md shadow-teal-700/20"
+                    : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200/40 dark:border-slate-700"
+                }`}
+              >
+                {cat === "semua" ? "⭐ Semua" : CATEGORY_EMOJIS[cat] + " " + cat}
+              </button>
+            ))}
+          </div>
+
+          {(searchQuery || selectedCategory !== "semua" || sortBy !== "default") && (
             <button
-              key={cat}
-              onClick={() => setSelectedCategory(cat)}
-              className={`px-3 py-1 rounded-full text-xs font-bold uppercase transition-all cursor-pointer ${
-                selectedCategory === cat
-                  ? "bg-slate-900 text-white shadow"
-                  : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-              }`}
+              onClick={() => {
+                setSearchQuery("");
+                setSelectedCategory("semua");
+                setSortBy("default");
+              }}
+              className="text-xs text-rose-600 hover:text-rose-700 font-bold hover:underline cursor-pointer flex items-center gap-1"
             >
-              {cat === "semua" ? "⭐ Semua" : CATEGORY_EMOJIS[cat] + " " + cat}
+              <RotateCcw size={13} />
+              Reset Filter
             </button>
-          ))}
+          )}
         </div>
       </div>
 
       {/* TWO PANEL MAP STAGE */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch min-h-[500px]">
         {/* Left Side: Results Sidebar (5 Columns) */}
-        <div className="lg:col-span-5 bg-white rounded-2xl shadow-md border border-slate-100 flex flex-col max-h-[600px] overflow-hidden">
-          <div className="p-4 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
-            <span className="font-bold text-xs text-slate-600 uppercase tracking-wider font-mono">
+        <div className="lg:col-span-5 bg-white dark:bg-slate-900 rounded-2xl shadow-md border border-slate-200/80 dark:border-slate-800 flex flex-col max-h-[620px] overflow-hidden">
+          <div className="p-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-850 flex justify-between items-center">
+            <span className="font-bold text-xs text-slate-600 dark:text-slate-300 uppercase tracking-wider font-mono">
               📋 Terdeteksi ({filteredLocations.length} tempat)
             </span>
             {selectedLocation && (
               <button
                 onClick={() => setSelectedLocation(null)}
-                className="text-[10px] text-red-600 dark:text-red-400 font-bold hover:underline cursor-pointer"
+                className="text-[10px] text-teal-700 dark:text-teal-400 font-bold hover:underline cursor-pointer flex items-center gap-1"
               >
-                Reset Pin
+                <RotateCcw size={11} /> Reset Pin
               </button>
             )}
           </div>
 
           <div className="flex-1 overflow-y-auto p-3 space-y-2.5">
             {filteredLocations.length === 0 ? (
-              <div className="text-center py-12 px-6 text-slate-450 italic">
+              <div className="text-center py-12 px-6 text-slate-400 italic">
                 <AlertTriangle size={32} className="mx-auto text-slate-350 mb-1.5" />
-                Tidak ada data lokasi publik ditemukan yang cocok untuk kombinasi pencarian ini. Usulkan baru di Dashboard!
+                Tidak ada data lokasi yang cocok untuk pencarian "{searchQuery}". Coba kata kunci lain.
               </div>
             ) : (
               filteredLocations.map((loc) => {
@@ -1220,39 +1402,56 @@ function PetaWisataView({ locations, currentUser }: { locations: Location[]; cur
                     onClick={() => handleSelectLocationFromList(loc)}
                     className={`p-3 rounded-xl border flex gap-3 cursor-pointer transition-all ${
                       isSelected 
-                        ? "border-teal-500 bg-teal-50/40 shadow-sm ring-1 ring-teal-500" 
-                        : "border-slate-100 bg-white hover:bg-slate-50 hover:shadow-xs"
+                        ? "border-teal-500 bg-teal-50/40 dark:bg-teal-950/30 shadow-sm ring-1 ring-teal-500" 
+                        : "border-slate-200/70 dark:border-slate-800 bg-white dark:bg-slate-850 hover:bg-slate-50 dark:hover:bg-slate-800 hover:shadow-xs"
                     }`}
                   >
                     <img
                       src={getDirectImageUrl(loc.photos?.[0])}
                       alt={loc.name}
-                      className="w-16 h-16 rounded-lg object-cover bg-slate-100 border border-slate-200/50"
+                      className="w-16 h-16 rounded-lg object-cover bg-slate-100 dark:bg-slate-800 border border-slate-200/50 dark:border-slate-700"
                       referrerPolicy="no-referrer"
                     />
                     <div className="flex-1 min-w-0">
                       <div className="flex justify-between items-start gap-1">
-                        <span className={`px-1.5 py-0.2 rounded text-[8px] font-mono tracking-wider font-bold uppercase rounded ${CATEGORY_COLORS[loc.category]}`}>
+                        <span className={`px-1.5 py-0.5 rounded text-[9px] font-mono tracking-wider font-bold uppercase border ${CATEGORY_COLORS[loc.category]}`}>
                           {loc.category}
                         </span>
-                        <div className="flex items-center text-amber-500 text-[11px] font-bold">
-                          ★ <span className="text-slate-700 ml-0.5">{loc.ratingAverage.toFixed(1)}</span>
+                        <div className="flex items-center text-amber-500 dark:text-amber-400 text-xs font-bold">
+                          ★ <span className="text-slate-800 dark:text-slate-100 font-extrabold ml-0.5">{loc.ratingAverage.toFixed(1)}</span>
                         </div>
                       </div>
-                      <h4 className="font-bold text-slate-800 text-sm mt-1 truncate">{loc.name}</h4>
-                      <p className="text-[11px] text-slate-500 line-clamp-1 mt-0.5">{loc.address}</p>
+                      <h4 className="font-bold text-slate-800 dark:text-slate-100 text-sm mt-1 truncate">{loc.name}</h4>
+                      <p className="text-[11px] text-slate-600 dark:text-slate-300 line-clamp-1 mt-0.5">{loc.address}</p>
                       
-                      <div className="flex justify-between items-center mt-2 pt-2 border-t border-slate-100/50">
-                        <span className="text-[10px] font-mono font-medium text-teal-700">📌 Lat: {loc.coordinates.lat}</span>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleOpenDetailPath(loc);
-                          }}
-                          className="text-[10px] font-extrabold text-slate-800 bg-slate-100 hover:bg-teal-700 hover:text-white px-2 py-0.5 rounded transition"
-                        >
-                          Lihat Detail →
-                        </button>
+                      <div className="flex justify-between items-center mt-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+                        <span className="text-[10px] font-mono font-medium text-teal-700 dark:text-teal-400">📌 Lat: {loc.coordinates.lat}</span>
+                        
+                        <div className="flex items-center gap-1.5">
+                          {/* Tombol Hapus Data Maps */}
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setLocationToDelete(loc);
+                            }}
+                            className="p-1 rounded-lg bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 hover:bg-rose-100 dark:hover:bg-rose-900/50 transition cursor-pointer"
+                            title="Hapus data destinasi ini dari peta"
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                          
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleOpenDetailPath(loc);
+                            }}
+                            className="text-[10px] font-extrabold text-slate-800 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 hover:bg-teal-700 hover:text-white dark:hover:bg-teal-600 px-2 py-1 rounded-lg transition cursor-pointer"
+                          >
+                            Lihat Detail →
+                          </button>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -1263,7 +1462,7 @@ function PetaWisataView({ locations, currentUser }: { locations: Location[]; cur
         </div>
 
         {/* Right Side: Map Component (7 Columns) */}
-        <div className="lg:col-span-7 bg-slate-100 rounded-2xl overflow-hidden shadow-md border border-slate-200 min-h-[400px]">
+        <div className="lg:col-span-7 bg-slate-100 dark:bg-slate-900 rounded-2xl overflow-hidden shadow-md border border-slate-200 dark:border-slate-800 min-h-[400px]">
           <MapComponent
             locations={filteredLocations}
             selectedLocation={selectedLocation}
@@ -1288,10 +1487,24 @@ const CATEGORY_EMOJIS: Record<LocationCategory, string> = {
 /* =========================================================================
    PUBLIC DIRECTORY: 2. DaftarTempatView (Grid layout)
    ========================================================================= */
-function DaftarTempatView({ locations, currentUser }: { locations: Location[]; currentUser: User }) {
+function DaftarTempatView({ 
+  locations, 
+  currentUser,
+  onDeleteLocation
+}: { 
+  locations: Location[]; 
+  currentUser: User;
+  onDeleteLocation?: (locationId: string) => void;
+}) {
   const [searchQuery, setSearchQuery] = useState("");
   const [activeTab, setActiveTab] = useState<"semua" | LocationCategory>("semua");
+  const [isLoading, setIsLoading] = useState(true);
   const navigate = useNavigate();
+
+  useEffect(() => {
+    const timer = setTimeout(() => setIsLoading(false), 350);
+    return () => clearTimeout(timer);
+  }, []);
 
   const approvedLocations = locations.filter((l) => l.status === "approved");
 
@@ -1302,6 +1515,25 @@ function DaftarTempatView({ locations, currentUser }: { locations: Location[]; c
     const matchesCategory = activeTab === "semua" || loc.category === activeTab;
     return matchesSearch && matchesCategory;
   });
+
+  if (isLoading) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center gap-2 text-xs font-bold tracking-wider text-slate-400 uppercase">
+          <Link to="/" className="hover:text-teal-700">Explore Pacitan Home</Link>
+          <ChevronRight size={12} />
+          <span className="text-slate-600">Daftar Destinasi</span>
+        </div>
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-5 rounded-2xl border border-slate-200">
+          <div>
+            <h2 className="font-display font-black text-slate-800 text-2xl">📋 Jelajahi Destinasi Populer</h2>
+            <p className="text-slate-500 text-xs mt-1">Eksplorasi seluruh tempat terdaftar yang telah teruji validitasnya oleh Admin Utama.</p>
+          </div>
+        </div>
+        <LocationGridSkeleton count={8} />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -1342,14 +1574,14 @@ function DaftarTempatView({ locations, currentUser }: { locations: Location[]; c
       </div>
 
       {/* Category Picker Tabs with icons */}
-      <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
+      <div className="flex items-center gap-1.5 overflow-x-auto pb-1.5 no-scrollbar">
         {(["semua", "wisata", "penginapan", "makan", "coffeeshop", "belanja", "lainnya"] as const).map(tab => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
-            className={`px-4 py-2 rounded-xl text-xs font-bold uppercase transition-all flex items-center gap-1 whitespace-nowrap cursor-pointer ${
+            className={`px-4 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-1.5 whitespace-nowrap cursor-pointer hover:scale-105 active:scale-95 duration-150 ${
               activeTab === tab 
-                ? "bg-pacitan-primary text-white shadow-sm" 
+                ? "bg-pacitan-primary text-white shadow-md shadow-indigo-600/10" 
                 : "bg-white text-slate-600 border border-slate-200/60 hover:bg-slate-50"
             }`}
           >
@@ -1371,37 +1603,39 @@ function DaftarTempatView({ locations, currentUser }: { locations: Location[]; c
             <div
               key={loc.id}
               onClick={() => navigate(`/location/${loc.id}`)}
-              className="bg-white border border-slate-200/80 rounded-2xl overflow-hidden shadow-xs hover:shadow-md transition-all cursor-pointer flex flex-col group"
+              className="bg-white border border-slate-200/80 rounded-2xl overflow-hidden shadow-xs hover:shadow-lg hover:-translate-y-1.5 transition-all duration-300 cursor-pointer flex flex-col group relative"
             >
               <div className="relative overflow-hidden aspect-video">
                 <img
                   src={getDirectImageUrl(loc.photos?.[0])}
                   alt={loc.name}
-                  className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                  className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
                   referrerPolicy="no-referrer"
                 />
-                <span className={`absolute top-3 left-3 bg-slate-900/80 text-white font-mono text-[9px] uppercase tracking-wider font-bold px-2 py-0.5 rounded backdrop-blur-xs`}>
-                  {loc.category}
+                <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent opacity-60 group-hover:opacity-80 transition-opacity duration-300"></div>
+                <span className={`absolute top-3 left-3 bg-slate-900/85 text-white font-mono text-[9px] uppercase tracking-wider font-extrabold px-2.5 py-1 rounded-md backdrop-blur-md border border-white/10`}>
+                  {CATEGORY_EMOJIS[loc.category]} {loc.category}
                 </span>
                 {loc.priceRange && (
-                  <span className="absolute bottom-3 right-3 bg-emerald-900/90 text-[10px] text-white px-2 py-0.5 rounded font-bold backdrop-blur-xs">
+                  <span className="absolute bottom-3 right-3 bg-emerald-900/90 border border-emerald-700/35 text-[10px] text-white px-2.5 py-1 rounded-md font-bold backdrop-blur-md shadow-xs">
                     🎟️ {loc.priceRange.split(" - ")[0]}
                   </span>
                 )}
               </div>
               <div className="p-4 flex-1 flex flex-col justify-between">
                 <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="text-[10px] text-slate-400 font-medium uppercase tracking-wider font-mono">Destinasi</span>
-                    <div className="flex items-center text-amber-500 text-xs font-bold gap-0.5 bg-amber-50/60 dark:bg-amber-950/40 px-1.5 py-0.5 rounded">
-                      ⭐ {loc.ratingAverage.toFixed(1)} <span className="text-slate-400 text-[10px] font-normal">({loc.reviewCount})</span>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="text-[9px] text-indigo-500 font-extrabold uppercase tracking-widest font-mono">Destinasi</span>
+                    <div className="flex items-center text-amber-500 text-xs font-bold gap-0.5 bg-amber-50/60 dark:bg-amber-950/40 px-2 py-0.5 rounded-md">
+                      ⭐ <span className="text-slate-800 dark:text-slate-200">{loc.ratingAverage.toFixed(1)}</span> <span className="text-slate-400 text-[9px] font-normal">({loc.reviewCount})</span>
                     </div>
                   </div>
-                  <h4 className="font-display font-bold text-slate-800 text-base group-hover:text-teal-700 transition-colors line-clamp-1">{loc.name}</h4>
-                  <p className="text-xs text-slate-500 line-clamp-2 mt-1.5 font-sans leading-relaxed">{loc.description}</p>
+                  <h4 className="font-display font-black text-slate-800 text-base group-hover:text-indigo-600 transition-colors line-clamp-1">{loc.name}</h4>
+                  <p className="text-xs text-slate-500 line-clamp-2 mt-2 font-sans leading-relaxed">{loc.description}</p>
                 </div>
-                <div className="text-[11px] text-slate-400 border-t border-slate-100 pt-3 mt-4 truncate">
-                  📍 {loc.address}
+                <div className="text-[11px] text-slate-400 border-t border-slate-100 pt-3 mt-4 flex items-center gap-1">
+                  <span>📍</span>
+                  <span className="truncate">{loc.address}</span>
                 </div>
               </div>
             </div>
@@ -1419,25 +1653,78 @@ function DetailTempatView({
   locations, 
   reviews, 
   currentUser,
-  onAddReview 
+  onAddReview,
+  onDeleteLocation
 }: { 
   locations: Location[]; 
   reviews: Review[]; 
   currentUser: User;
   onAddReview: (review: Review) => void;
+  onDeleteLocation?: (locationId: string) => void;
 }) {
   const { id } = useParams();
   const navigate = useNavigate();
-  const loc = locations.find((l) => l.id === id);
+  const [isLoading, setIsLoading] = useState(true);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
-  // Filter sibling reviews
-  const currentReviews = reviews.filter((r) => r.locationId === id);
+  useEffect(() => {
+    const timer = setTimeout(() => setIsLoading(false), 350);
+    return () => clearTimeout(timer);
+  }, [id]);
+
+  const loc = locations.find((l) => l.id === id);
 
   // Share handlers & states
   const [copiedLink, setCopiedLink] = useState(false);
   const shareUrl = window.location.href;
   const shareTitle = `${loc?.name || "Destinasi Wisata"} - Explore Pacitan`;
   const shareText = loc ? `Jelajahi keindahan destinasi wisata "${loc.name}" di Pacitan! ${loc.description.slice(0, 110)}...` : "";
+
+  // Lightbox Modal state for Zoomed Photo
+  const [zoomedPhotoIndex, setZoomedPhotoIndex] = useState<number | null>(null);
+  const [zoomLevel, setZoomLevel] = useState<number>(1);
+
+  useEffect(() => {
+    if (zoomedPhotoIndex === null) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setZoomedPhotoIndex(null);
+      } else if (e.key === "ArrowLeft") {
+        setZoomedPhotoIndex((prev) => (prev !== null && prev > 0 ? prev - 1 : (loc?.photos?.length ? loc.photos.length - 1 : 0)));
+        setZoomLevel(1);
+      } else if (e.key === "ArrowRight") {
+        setZoomedPhotoIndex((prev) => (prev !== null && loc?.photos && prev < loc.photos.length - 1 ? prev + 1 : 0));
+        setZoomLevel(1);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [zoomedPhotoIndex, loc?.photos]);
+
+  // Review Input Form State
+  const [rating, setRating] = useState(5);
+  const [comment, setComment] = useState("");
+  const [successMsg, setSuccessMsg] = useState("");
+
+  if (isLoading) {
+    return <LocationDetailSkeleton />;
+  }
+
+  if (!loc) {
+    return (
+      <div className="text-center py-20 bg-white rounded-2xl border border-dashed border-slate-200">
+        <AlertCircle size={48} className="mx-auto text-red-500 mb-3" />
+        <h4 className="font-display font-bold text-slate-800 text-lg">Obyek Wisata Tidak Ditemukan</h4>
+        <p className="text-sm text-slate-500 mt-1 mb-6">Data lokasi destinasi pariwisata yang Anda akses tidak terdaftar dalam database Explore Pacitan.</p>
+        <button onClick={() => navigate("/")} className="bg-slate-900 text-white text-xs font-bold px-4 py-2 rounded-lg hover:bg-slate-800 transition">
+          Kembalikan ke Peta
+        </button>
+      </div>
+    );
+  }
+
+  // Filter sibling reviews
+  const currentReviews = reviews.filter((r) => r.locationId === id);
 
   const handleNativeShare = async () => {
     if (navigator.share) {
@@ -1483,24 +1770,6 @@ function DetailTempatView({
     window.open(fbUrl, "_blank", "noopener,noreferrer");
   };
 
-  // Review Input Form State
-  const [rating, setRating] = useState(5);
-  const [comment, setComment] = useState("");
-  const [successMsg, setSuccessMsg] = useState("");
-
-  if (!loc) {
-    return (
-      <div className="text-center py-20 bg-white rounded-2xl border border-dashed border-slate-200">
-        <AlertCircle size={48} className="mx-auto text-red-500 mb-3" />
-        <h4 className="font-display font-bold text-slate-800 text-lg">Obyek Wisata Tidak Ditemukan</h4>
-        <p className="text-sm text-slate-500 mt-1 mb-6">Data lokasi destinasi pariwisata yang Anda akses tidak terdaftar dalam database Explore Pacitan.</p>
-        <button onClick={() => navigate("/")} className="bg-slate-900 text-white text-xs font-bold px-4 py-2 rounded-lg hover:bg-slate-800 transition">
-          Kembalikan ke Peta
-        </button>
-      </div>
-    );
-  }
-
   const handleSubmitReview = (e: React.FormEvent) => {
     e.preventDefault();
     if (currentUser.id === "guest_empty" || currentUser.name === "Tamu (Belum Login)") {
@@ -1531,19 +1800,72 @@ function DetailTempatView({
 
   return (
     <div className="space-y-6">
+      {/* Modal Konfirmasi Hapus Destinasi */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl max-w-sm w-full p-6 shadow-2xl space-y-4 animate-in zoom-in-95 duration-200 text-slate-800 dark:text-slate-100">
+            <div className="w-12 h-12 rounded-2xl bg-rose-100 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 flex items-center justify-center mx-auto">
+              <Trash2 size={24} />
+            </div>
+            <div className="text-center space-y-1.5">
+              <h3 className="font-display font-black text-slate-900 dark:text-slate-100 text-base">
+                Hapus Data Destinasi "{loc.name}"?
+              </h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                Tindakan ini akan menghapus destinasi dari peta, rute keliling, dan seluruh direktori Explore Pacitan.
+              </p>
+            </div>
+            <div className="flex justify-end gap-2 text-xs pt-2">
+              <button
+                type="button"
+                onClick={() => setShowDeleteConfirm(false)}
+                className="px-3.5 py-2 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-xl text-slate-600 dark:text-slate-300 font-bold cursor-pointer transition"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (onDeleteLocation) {
+                    onDeleteLocation(loc.id);
+                  }
+                  setShowDeleteConfirm(false);
+                  navigate("/");
+                }}
+                className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl font-bold flex items-center gap-1.5 cursor-pointer shadow-md shadow-rose-600/20 transition"
+              >
+                <Trash2 size={13} />
+                Ya, Hapus Destinasi
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Back to list trigger and quick share */}
       <div className="flex items-center justify-between">
         <button
           onClick={() => navigate(-1)}
-          className="text-xs font-bold text-slate-600 hover:text-slate-950 flex items-center gap-1 px-3 py-1.5 rounded-lg border border-slate-200 bg-white transition hover:shadow-xs cursor-pointer"
+          className="text-xs font-bold text-slate-600 dark:text-slate-300 hover:text-slate-950 dark:hover:text-white flex items-center gap-1 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 transition hover:shadow-xs cursor-pointer"
         >
           <ArrowLeft size={14} /> Kembali
         </button>
 
         <div className="flex items-center gap-2">
+          {onDeleteLocation && (
+            <button
+              type="button"
+              onClick={() => setShowDeleteConfirm(true)}
+              className="text-xs font-bold text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 dark:hover:bg-rose-900/50 border border-rose-200 dark:border-rose-900/50 px-3 py-1.5 rounded-lg transition flex items-center gap-1.5 cursor-pointer shadow-2xs"
+              title="Hapus data destinasi ini"
+            >
+              <Trash2 size={13} />
+              <span>Hapus Data</span>
+            </button>
+          )}
           <button
             onClick={handleCopyLink}
-            className="text-xs font-bold text-teal-700 bg-teal-50 hover:bg-teal-100 border border-teal-200 px-3 py-1.5 rounded-lg transition flex items-center gap-1.5 cursor-pointer shadow-2xs"
+            className="text-xs font-bold text-teal-700 dark:text-teal-300 bg-teal-50 dark:bg-teal-950/50 hover:bg-teal-100 dark:hover:bg-teal-900/50 border border-teal-200 dark:border-teal-800 px-3 py-1.5 rounded-lg transition flex items-center gap-1.5 cursor-pointer shadow-2xs"
             title="Salin Tautan Destinasi Wisata"
           >
             {copiedLink ? <Check size={14} className="text-emerald-600" /> : <Clipboard size={14} />}
@@ -1558,14 +1880,21 @@ function DetailTempatView({
       {/* Hero Header with Photos Carousel layout */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         {/* Left Side cover */}
-        <div className="lg:col-span-8 rounded-2xl overflow-hidden shadow border border-slate-200 aspect-video relative">
+        <div 
+          onClick={() => setZoomedPhotoIndex(0)}
+          className="lg:col-span-8 rounded-2xl overflow-hidden shadow border border-slate-200 aspect-video relative cursor-zoom-in group"
+        >
           <img
-            src={getDirectImageUrl(loc.photos?.[0] || "https://images.unsplash.com/photo-1544735716-392fe2489ffa?q=80&w=800")}
+            src={getDirectImageUrl(loc.photos?.[0] || "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?q=80&w=800")}
             alt={loc.name}
-            className="w-full h-full object-cover"
+            className="w-full h-full object-cover group-hover:scale-102 transition duration-500"
             referrerPolicy="no-referrer"
           />
-          <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/40 to-transparent flex items-end p-6 sm:p-8">
+          <div className="absolute top-4 right-4 bg-slate-900/75 text-white text-[10px] px-3 py-1 rounded-full border border-white/20 flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity duration-300 shadow-sm">
+            <ZoomIn size={12} />
+            <span>Klik untuk memperbesar</span>
+          </div>
+          <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/40 to-transparent flex items-end p-6 sm:p-8 pointer-events-none">
             <div className="text-white">
               <span className="text-[10px] sm:text-xs uppercase tracking-widest font-mono font-bold text-teal-400">Pacitan Wonderful Destination</span>
               <h1 className="font-display font-extrabold text-2xl sm:text-4xl text-white mt-1.5">{loc.name}</h1>
@@ -1578,46 +1907,46 @@ function DetailTempatView({
         </div>
 
         {/* Right Side Info Block (4 Columns) */}
-        <div className="lg:col-span-4 bg-white rounded-2xl p-5 border border-slate-200 shadow flex flex-col justify-between space-y-4">
+        <div className="lg:col-span-4 bg-white dark:bg-slate-900 rounded-2xl p-5 border border-slate-200 dark:border-slate-800 shadow flex flex-col justify-between space-y-4">
           <div className="space-y-4">
-            <h3 className="font-display font-bold text-slate-800 text-lg border-b border-slate-100 pb-2 flex items-center gap-1.5">
+            <h3 className="font-display font-bold text-slate-800 dark:text-slate-100 text-lg border-b border-slate-100 dark:border-slate-800 pb-2 flex items-center gap-1.5">
               💡 Detail Informasi
             </h3>
             
             <div className="flex items-start gap-2 text-xs">
-              <MapPin className="text-teal-600 flex-shrink-0 mt-0.5" size={16} />
+              <MapPin className="text-teal-600 dark:text-teal-400 flex-shrink-0 mt-0.5" size={16} />
               <div>
-                <span className="font-semibold block text-slate-500">Alamat Tempat</span>
-                <span className="text-slate-800 font-medium">{loc.address}</span>
+                <span className="font-semibold block text-slate-500 dark:text-slate-400">Alamat Tempat</span>
+                <span className="text-slate-800 dark:text-slate-200 font-medium">{loc.address}</span>
               </div>
             </div>
 
             {loc.openingHours && (
               <div className="flex items-start gap-2 text-xs">
-                <Clock className="text-teal-600 flex-shrink-0 mt-0.5" size={16} />
+                <Clock className="text-teal-600 dark:text-teal-400 flex-shrink-0 mt-0.5" size={16} />
                 <div>
-                  <span className="font-semibold block text-slate-500">Jam Operasional</span>
-                  <span className="text-slate-800 font-medium font-mono">{loc.openingHours}</span>
+                  <span className="font-semibold block text-slate-500 dark:text-slate-400">Jam Operasional</span>
+                  <span className="text-slate-800 dark:text-slate-200 font-medium font-mono">{loc.openingHours}</span>
                 </div>
               </div>
             )}
 
             {loc.priceRange && (
               <div className="flex items-start gap-2 text-xs">
-                <span className="text-teal-600 text-sm flex-shrink-0 mt-0.2 select-none">🎟️</span>
+                <span className="text-teal-600 dark:text-teal-400 text-sm flex-shrink-0 mt-0.2 select-none">🎟️</span>
                 <div>
-                  <span className="font-semibold block text-slate-500">Biaya Tiket / Harga</span>
-                  <span className="text-slate-800 font-medium font-mono">{loc.priceRange}</span>
+                  <span className="font-semibold block text-slate-500 dark:text-slate-400">Biaya Tiket / Harga</span>
+                  <span className="text-slate-800 dark:text-slate-200 font-medium font-mono">{loc.priceRange}</span>
                 </div>
               </div>
             )}
 
             {loc.contact && (
               <div className="flex items-start gap-2 text-xs">
-                <Phone className="text-teal-600 flex-shrink-0 mt-0.5" size={16} />
+                <Phone className="text-teal-600 dark:text-teal-400 flex-shrink-0 mt-0.5" size={16} />
                 <div>
-                  <span className="font-semibold block text-slate-500">Nomor Kontak</span>
-                  <span className="text-slate-800 font-medium font-mono">{loc.contact}</span>
+                  <span className="font-semibold block text-slate-500 dark:text-slate-400">Nomor Kontak</span>
+                  <span className="text-slate-800 dark:text-slate-200 font-medium font-mono">{loc.contact}</span>
                 </div>
               </div>
             )}
@@ -1679,27 +2008,42 @@ function DetailTempatView({
       </div>
 
       {/* Description body content */}
-      <div className="bg-white rounded-2xl p-6 sm:p-8 border border-slate-200 shadow-sm space-y-4">
-        <h3 className="font-display font-bold text-slate-800 text-lg border-b border-slate-150 pb-2">
+      <div className="bg-white dark:bg-slate-900 rounded-2xl p-6 sm:p-8 border border-slate-200 dark:border-slate-800 shadow-sm space-y-4">
+        <h3 className="font-display font-bold text-slate-800 dark:text-slate-100 text-lg border-b border-slate-150 dark:border-slate-800 pb-2">
           📖 Deskripsi Singkat Obyek wisata
         </h3>
-        <p className="text-slate-700 text-sm leading-relaxed font-sans font-light whitespace-pre-line">
+        <p className="text-slate-700 dark:text-slate-300 text-sm leading-relaxed font-sans font-light whitespace-pre-line">
           {loc.description}
         </p>
 
-        {/* Thumbnail photos gallery if multi-photos exist */}
+        {/* Responsive Photo Carousel if multi-photos exist */}
         {loc.photos && loc.photos.length > 1 && (
-          <div className="pt-4 border-t border-slate-100 mt-6 md:p-1">
-            <span className="block text-xs font-bold uppercase text-slate-400 tracking-wider mb-2.5">📸 Foto Detail Tambahan</span>
-            <div className="flex flex-wrap gap-3">
-              {loc.photos.slice(1).map((ph, idx) => (
-                <img
-                  key={idx}
-                  src={getDirectImageUrl(ph)}
-                  alt={`${loc.name} photo detail ${idx + 1}`}
-                  className="w-28 h-20 object-cover rounded-lg border border-slate-200 hover:opacity-85 transition cursor-pointer"
-                  referrerPolicy="no-referrer"
-                />
+          <div className="pt-6 border-t border-slate-100 mt-6 md:p-1 relative">
+            <div className="flex items-center justify-between mb-4">
+              <span className="block text-xs font-bold uppercase text-slate-400 dark:text-slate-500 tracking-wider">📸 Galeri Foto Penuh</span>
+              <span className="text-[10px] text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-3 py-1 rounded-full font-medium">Geser untuk melihat</span>
+            </div>
+            {/* Carousel Container */}
+            <div className="flex gap-4 overflow-x-auto pb-4 snap-x snap-mandatory scroll-smooth no-scrollbar">
+              {loc.photos.map((ph, idx) => (
+                <div 
+                  key={idx} 
+                  className="relative overflow-hidden rounded-xl group cursor-zoom-in border border-slate-200/80 dark:border-slate-700 shadow-sm flex-shrink-0 w-64 sm:w-80 lg:w-96 aspect-video snap-center bg-slate-100 dark:bg-slate-800"
+                  onClick={() => setZoomedPhotoIndex(idx)}
+                >
+                  <img
+                    src={getDirectImageUrl(ph)}
+                    alt={`${loc.name} foto galeri ${idx + 1}`}
+                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700"
+                    referrerPolicy="no-referrer"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end justify-between p-4">
+                    <ZoomIn size={20} className="text-white drop-shadow-md" />
+                    <span className="text-white text-[10px] font-mono font-bold bg-black/40 px-2 py-0.5 rounded backdrop-blur-sm">
+                      Foto {idx + 1}/{loc.photos?.length}
+                    </span>
+                  </div>
+                </div>
               ))}
             </div>
           </div>
@@ -1709,23 +2053,23 @@ function DetailTempatView({
       {/* Interactive Review Section */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         {/* Left Card: Users Review List (7 Columns) */}
-        <div className="lg:col-span-7 bg-white rounded-2xl p-6 border border-slate-200 shadow-sm space-y-5">
-          <h3 className="font-display font-bold text-slate-800 text-base border-b border-slate-100 pb-3 flex items-center gap-1.5">
+        <div className="lg:col-span-7 bg-white dark:bg-slate-900 rounded-2xl p-6 border border-slate-200 dark:border-slate-800 shadow-sm space-y-5">
+          <h3 className="font-display font-bold text-slate-800 dark:text-slate-100 text-base border-b border-slate-100 dark:border-slate-800 pb-3 flex items-center gap-1.5">
             💬 Ulasan Pengunjung ({currentReviews.length})
           </h3>
 
           {currentReviews.length === 0 ? (
-            <div className="text-center py-10 text-slate-400 italic text-xs">
+            <div className="text-center py-10 text-slate-400 dark:text-slate-500 italic text-xs">
               Belum ada ulasan untuk tempat ini. Jadilah pengulas pertama!
             </div>
           ) : (
             <div className="space-y-4 max-h-[400px] overflow-y-auto pr-2">
               {currentReviews.map((rev) => (
-                <div key={rev.id} className="border-b border-slate-100 last:border-0 pb-4 last:pb-0 space-y-2">
+                <div key={rev.id} className="border-b border-slate-100 dark:border-slate-800 last:border-0 pb-4 last:pb-0 space-y-2">
                   <div className="flex justify-between items-start">
                     <div>
-                      <span className="font-bold text-slate-800 text-xs sm:text-sm block">{rev.userName}</span>
-                      <span className="text-[10px] text-slate-400 block font-mono">
+                      <span className="font-bold text-slate-800 dark:text-slate-200 text-xs sm:text-sm block">{rev.userName}</span>
+                      <span className="text-[10px] text-slate-400 dark:text-slate-500 block font-mono">
                         {new Date(rev.createdAt).toLocaleDateString("id-ID")}
                       </span>
                     </div>
@@ -1736,7 +2080,7 @@ function DetailTempatView({
                       ))}
                     </div>
                   </div>
-                  <p className="text-xs sm:text-sm text-slate-600 font-sans leading-relaxed">
+                  <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 font-sans leading-relaxed">
                     {rev.comment}
                   </p>
                 </div>
@@ -1746,8 +2090,8 @@ function DetailTempatView({
         </div>
 
         {/* Right Card: Submit Review Portal (5 Columns) */}
-        <div className="lg:col-span-5 bg-white rounded-2xl p-6 border border-slate-200 shadow-sm">
-          <h3 className="font-display font-bold text-slate-800 text-base border-b border-slate-100 pb-3 mb-4 flex items-center gap-1.5">
+        <div className="lg:col-span-5 bg-white dark:bg-slate-900 rounded-2xl p-6 border border-slate-200 dark:border-slate-800 shadow-sm">
+          <h3 className="font-display font-bold text-slate-800 dark:text-slate-100 text-base border-b border-slate-100 dark:border-slate-800 pb-3 mb-4 flex items-center gap-1.5">
             ✍️ Bagikan Pengalaman Ulasan Anda
           </h3>
 
@@ -1809,6 +2153,156 @@ function DetailTempatView({
           )}
         </div>
       </div>
+
+      {/* Lightbox Photo Zoom Modal */}
+      {zoomedPhotoIndex !== null && loc.photos && loc.photos[zoomedPhotoIndex] && (
+        <div 
+          className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-slate-950/95 backdrop-blur-md transition-opacity duration-300 select-none"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setZoomedPhotoIndex(null);
+          }}
+        >
+          {/* Top Panel Controls */}
+          <div className="absolute top-0 inset-x-0 h-16 bg-gradient-to-b from-black/60 to-transparent flex items-center justify-between px-6 z-10 pointer-events-none">
+            <div className="text-white text-left pointer-events-auto">
+              <h4 className="font-display font-bold text-sm sm:text-base line-clamp-1">{loc.name}</h4>
+              <p className="text-[10px] sm:text-xs text-slate-300 font-mono">
+                {zoomedPhotoIndex === 0 ? "Foto Sampul Utama" : `Foto Detail Tambahan ${zoomedPhotoIndex}`}
+              </p>
+            </div>
+
+            <div className="flex items-center gap-3 pointer-events-auto">
+              {/* Zoom Controls */}
+              <div className="bg-slate-900/80 rounded-lg p-0.5 border border-white/10 flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setZoomLevel((prev) => Math.max(1, prev - 0.25))}
+                  disabled={zoomLevel <= 1}
+                  className="p-1.5 text-white hover:bg-white/10 rounded disabled:opacity-40 transition cursor-pointer"
+                  title="Perkecil"
+                >
+                  <ZoomOut size={16} />
+                </button>
+                <span className="text-white font-mono text-[11px] font-bold min-w-[40px] text-center select-none">
+                  {Math.round(zoomLevel * 100)}%
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setZoomLevel((prev) => Math.min(3, prev + 0.25))}
+                  disabled={zoomLevel >= 3}
+                  className="p-1.5 text-white hover:bg-white/10 rounded disabled:opacity-40 transition cursor-pointer"
+                  title="Perbesar"
+                >
+                  <ZoomIn size={16} />
+                </button>
+                {zoomLevel !== 1 && (
+                  <button
+                    type="button"
+                    onClick={() => setZoomLevel(1)}
+                    className="px-2 py-1 text-[10px] font-bold bg-teal-600 hover:bg-teal-500 rounded text-white transition ml-1 cursor-pointer"
+                  >
+                    Reset
+                  </button>
+                )}
+              </div>
+
+              {/* Close Button */}
+              <button
+                type="button"
+                onClick={() => setZoomedPhotoIndex(null)}
+                className="bg-slate-900/80 hover:bg-white/20 text-white p-2 rounded-full border border-white/10 transition cursor-pointer shadow-md"
+                aria-label="Tutup"
+              >
+                <X size={20} />
+              </button>
+            </div>
+          </div>
+
+          {/* Main Stage Image Container */}
+          <div className="w-full max-w-5xl px-4 sm:px-12 flex items-center justify-center relative select-none">
+            
+            {/* Left Prev Button */}
+            {loc.photos.length > 1 && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setZoomedPhotoIndex((prev) => (prev !== null && prev > 0 ? prev - 1 : loc.photos.length - 1));
+                  setZoomLevel(1);
+                }}
+                className="absolute left-4 sm:left-6 z-10 w-11 h-11 bg-slate-900/80 hover:bg-white/20 text-white rounded-full flex items-center justify-center border border-white/10 transition hover:scale-105 cursor-pointer shadow-lg"
+              >
+                <ChevronLeft size={24} />
+              </button>
+            )}
+
+            {/* Photo Wrapper for Zoom */}
+            <div className="max-w-full max-h-[72vh] overflow-hidden rounded-xl bg-black/40 flex items-center justify-center p-2">
+              <img
+                src={getDirectImageUrl(loc.photos[zoomedPhotoIndex])}
+                alt={`${loc.name} - zoom view`}
+                style={{
+                  transform: `scale(${zoomLevel})`,
+                  transition: zoomLevel === 1 ? 'transform 0.2s ease-out' : 'none',
+                  maxHeight: '70vh',
+                }}
+                className="max-w-full object-contain pointer-events-none select-none rounded-lg"
+                referrerPolicy="no-referrer"
+              />
+            </div>
+
+            {/* Right Next Button */}
+            {loc.photos.length > 1 && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setZoomedPhotoIndex((prev) => (prev !== null && prev < loc.photos.length - 1 ? prev + 1 : 0));
+                  setZoomLevel(1);
+                }}
+                className="absolute right-4 sm:right-6 z-10 w-11 h-11 bg-slate-900/80 hover:bg-white/20 text-white rounded-full flex items-center justify-center border border-white/10 transition hover:scale-105 cursor-pointer shadow-lg"
+              >
+                <ChevronRight size={24} />
+              </button>
+            )}
+          </div>
+
+          {/* Bottom Indicators Carousel & Thumbnails */}
+          <div className="absolute bottom-6 inset-x-0 text-center space-y-3 z-10 flex flex-col items-center justify-center">
+            {/* Index Counter Badge */}
+            <span className="bg-slate-900/80 text-white text-xs font-mono font-bold px-3 py-1 rounded-full border border-white/10">
+              {zoomedPhotoIndex + 1} / {loc.photos.length}
+            </span>
+
+            {/* Thumbnails list inside lightbox for quick jump */}
+            {loc.photos.length > 1 && (
+              <div className="flex gap-2 max-w-[90vw] overflow-x-auto p-1.5 bg-slate-900/40 rounded-xl border border-white/5 backdrop-blur-xs select-none">
+                {loc.photos.map((p, idx) => (
+                  <button
+                    key={idx}
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setZoomedPhotoIndex(idx);
+                      setZoomLevel(1);
+                    }}
+                    className={`w-14 h-10 rounded-md overflow-hidden border-2 transition shrink-0 ${
+                      zoomedPhotoIndex === idx ? 'border-teal-500 scale-105' : 'border-transparent opacity-60 hover:opacity-100'
+                    }`}
+                  >
+                    <img
+                      src={getDirectImageUrl(p)}
+                      alt={`Thumb ${idx + 1}`}
+                      className="w-full h-full object-cover"
+                      referrerPolicy="no-referrer"
+                    />
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -2225,7 +2719,7 @@ function DashboardUserView({
                       <div key={sub.id} className="p-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
                         <div className="flex gap-3.5 items-start">
                           <img
-                            src={getDirectImageUrl(sub.payload.photos?.[0] || 'https://images.unsplash.com/photo-1544735716-392fe2489ffa?q=80&w=150')}
+                            src={getDirectImageUrl(sub.payload.photos?.[0] || 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?q=80&w=150')}
                             alt={sub.payload.name}
                             className="w-16 h-16 rounded-lg object-cover border border-slate-205"
                             referrerPolicy="no-referrer"
@@ -2616,7 +3110,7 @@ function SubmitWisataView({
         setAddress("");
         setLat(-8.21);
         setLng(111.03);
-        setPhotoInput("https://images.unsplash.com/photo-1544735716-392fe2489ffa?q=80&w=800");
+        setPhotoInput("https://images.unsplash.com/photo-1507525428034-b723cf961d3e?q=80&w=800");
         setAdditionalPhotos([]);
         setOpeningHours("");
         setPriceRange("");
@@ -2704,7 +3198,7 @@ function SubmitWisataView({
       setAddress("");
       setLat(-8.21);
       setLng(111.03);
-      setPhotoInput("https://images.unsplash.com/photo-1544735716-392fe2489ffa?q=80&w=800");
+      setPhotoInput("https://images.unsplash.com/photo-1507525428034-b723cf961d3e?q=80&w=800");
       setAdditionalPhotos([]);
       setOpeningHours("");
       setPriceRange("");
@@ -2719,7 +3213,7 @@ function SubmitWisataView({
     setCategory(cat);
     
     // Assign typical pristine Unsplash photos depending on option
-    if (cat === "wisata") setPhotoInput("https://images.unsplash.com/photo-1544735716-392fe2489ffa?q=80&w=800");
+    if (cat === "wisata") setPhotoInput("https://images.unsplash.com/photo-1507525428034-b723cf961d3e?q=80&w=800");
     if (cat === "penginapan") setPhotoInput("https://images.unsplash.com/photo-1566073771259-6a8506099945?q=80&w=800");
     if (cat === "makan") setPhotoInput("https://images.unsplash.com/photo-1555939594-58d7cb561ad1?q=80&w=800");
     if (cat === "coffeeshop") setPhotoInput("https://images.unsplash.com/photo-1554118811-1e0d58224f24?q=80&w=800");
@@ -3103,7 +3597,7 @@ function SubmitWisataView({
                   <button
                     type="button"
                     onClick={() => {
-                      setPhotoInput("https://images.unsplash.com/photo-1544735716-392fe2489ffa?q=80&w=800");
+                      setPhotoInput("https://images.unsplash.com/photo-1507525428034-b723cf961d3e?q=80&w=800");
                       triggerToast("Menggunakan tautan default Pantai Klayar", "info");
                     }}
                     className="px-3 py-2 border text-xs font-bold rounded-lg hover:bg-slate-50 flex items-center gap-1 flex-shrink-0 text-slate-600 cursor-pointer"
@@ -3121,7 +3615,7 @@ function SubmitWisataView({
                 <p className="text-[10px] text-slate-400 font-medium">Klik pada gambar premium dari koleksi ikonik Pacitan untuk menerapkannya secara langsung:</p>
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
                   {[
-                    { name: "Pantai Klayar", url: "https://images.unsplash.com/photo-1544735716-392fe2489ffa?q=80&w=800" },
+                    { name: "Pantai Klayar", url: "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?q=80&w=800" },
                     { name: "Goa Gong", url: "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?q=80&w=800" },
                     { name: "Penginapan / Resort", url: "https://images.unsplash.com/photo-1566073771259-6a8506099945?q=80&w=800" },
                     { name: "Kuliner Khas", url: "https://images.unsplash.com/photo-1555939594-58d7cb561ad1?q=80&w=800" },
@@ -3291,7 +3785,7 @@ function SubmitWisataView({
                   <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Opsi 3: Gunakan Galeri Cepat Pacitan</span>
                   <div className="flex flex-wrap gap-1.5">
                     {[
-                      { name: "+ Pantai", url: "https://images.unsplash.com/photo-1544735716-392fe2489ffa?q=80&w=800" },
+                      { name: "+ Pantai", url: "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?q=80&w=800" },
                       { name: "+ Goa", url: "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?q=80&w=800" },
                       { name: "+ Hotel/Villa", url: "https://images.unsplash.com/photo-1566073771259-6a8506099945?q=80&w=800" },
                       { name: "+ Makanan", url: "https://images.unsplash.com/photo-1555939594-58d7cb561ad1?q=80&w=800" },
@@ -3561,7 +4055,8 @@ function AdminSlaDashboardView({
   reviews = [],
   itineraries = [],
   logs = [],
-  currentUser 
+  currentUser,
+  onOpenSheetsModal
 }: { 
   locations: Location[]; 
   submissions: LocationSubmission[]; 
@@ -3570,6 +4065,7 @@ function AdminSlaDashboardView({
   itineraries?: Itinerary[];
   logs?: ModerationLog[];
   currentUser: User;
+  onOpenSheetsModal?: () => void;
 }) {
   const navigate = useNavigate();
 
@@ -3750,6 +4246,41 @@ function AdminSlaDashboardView({
             >
               <Bot size={15} />
               <span>{aiConfig.isValidated ? "Kelola Kunci AI" : "Setup Kunci AI"}</span>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Dedicated Google Sheets Sync Panel - DIRECTLY BELOW AI SETTINGS */}
+      {onOpenSheetsModal && (
+        <div className="bg-gradient-to-r from-emerald-900/90 via-teal-900/80 to-slate-900 text-white p-5 rounded-2xl border border-emerald-800/60 shadow-md flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+          <div className="flex items-start gap-3.5">
+            <div className="w-12 h-12 rounded-2xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 flex items-center justify-center shrink-0 shadow-md font-bold mt-0.5">
+              <FileSpreadsheet size={26} className="stroke-[2.2]" />
+            </div>
+            <div className="space-y-1">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h3 className="font-display font-extrabold text-base text-white">
+                  Sinkronisasi Database Google Sheets &amp; Google Drive
+                </h3>
+                <span className="bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-[10px] font-mono font-bold px-2.5 py-0.5 rounded-full flex items-center gap-1">
+                  <Database size={11} /> 1 Spreadsheet Multi-Tab
+                </span>
+              </div>
+              <p className="text-xs text-slate-300 max-w-2xl leading-relaxed">
+                Tarik data dan ekspor 6 kategori wisata langsung dari 1 Google Spreadsheet utama. Mendukung sinkronisasi Google Drive real-time &amp; backup offline.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 self-end md:self-center shrink-0">
+            <button
+              onClick={onOpenSheetsModal}
+              className="bg-emerald-500 hover:bg-emerald-400 active:scale-95 text-slate-950 font-black text-xs px-5 py-2.5 rounded-xl transition flex items-center gap-2 cursor-pointer shadow-lg shadow-emerald-500/20"
+              title="Buka panel integrasi & sinkronisasi Google Sheets"
+            >
+              <FileSpreadsheet size={16} />
+              <span>Buka Sinkronisasi Google Sheets</span>
             </button>
           </div>
         </div>
@@ -4937,25 +5468,39 @@ function AdminModerationView({
 function AdminLocationsManageView({ 
   locations, 
   currentUser,
-  onToggleStatus 
+  onToggleStatus,
+  onOpenSheetsModal,
+  onDeleteLocation
 }: { 
   locations: Location[]; 
   currentUser: User;
   onToggleStatus: (locId: string, active: boolean) => void;
+  onOpenSheetsModal?: () => void;
+  onDeleteLocation?: (locId: string) => void;
 }) {
   const navigate = useNavigate();
+  const [adminSearch, setAdminSearch] = useState("");
+  const [adminCategory, setAdminCategory] = useState<string>("semua");
   const [confirmingLoc, setConfirmingLoc] = useState<{ id: string; name: string; nextMode: boolean } | null>(null);
+  const [confirmingDeleteLoc, setConfirmingDeleteLoc] = useState<{ id: string; name: string } | null>(null);
 
   if (currentUser.role !== "admin") {
     return <Navigate to="/" replace />;
   }
 
+  const filteredAdminLocations = locations.filter((loc) => {
+    const query = adminSearch.toLowerCase().trim();
+    const matchesQuery = !query || loc.name.toLowerCase().includes(query) || loc.address.toLowerCase().includes(query);
+    const matchesCategory = adminCategory === "semua" || loc.category === adminCategory;
+    return matchesQuery && matchesCategory;
+  });
+
   return (
     <div className="space-y-6">
-      {/* Dynamic Overlay Modal Confirmation */}
+      {/* Dynamic Overlay Modal Confirmation Status Toggle */}
       {confirmingLoc && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl max-w-sm w-full p-6 shadow-2xl space-y-4 animate-in zoom-in-95 duration-200 text-slate-800 dark:text-slate-105">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl max-w-sm w-full p-6 shadow-2xl space-y-4 animate-in zoom-in-95 duration-200 text-slate-800 dark:text-slate-100">
             <h3 className="font-display font-black text-slate-900 dark:text-slate-100 text-base flex items-center gap-2">
               ⚠️ Konfirmasi Perubahan Status
             </h3>
@@ -4967,12 +5512,14 @@ function AdminLocationsManageView({
             </p>
             <div className="flex justify-end gap-2 text-xs">
               <button
+                type="button"
                 onClick={() => setConfirmingLoc(null)}
-                className="px-3 py-1.5 border hover:bg-slate-50 dark:hover:bg-slate-800 rounded-lg text-slate-500 dark:text-slate-400 cursor-pointer"
+                className="px-3 py-1.5 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-lg text-slate-500 dark:text-slate-400 cursor-pointer"
               >
                 Batal
               </button>
               <button
+                type="button"
                 onClick={() => {
                   onToggleStatus(confirmingLoc.id, confirmingLoc.nextMode);
                   triggerToast(
@@ -4992,72 +5539,177 @@ function AdminLocationsManageView({
         </div>
       )}
 
+      {/* Dynamic Overlay Modal Delete Map Data */}
+      {confirmingDeleteLoc && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl max-w-sm w-full p-6 shadow-2xl space-y-4 animate-in zoom-in-95 duration-200 text-slate-800 dark:text-slate-100">
+            <div className="w-10 h-10 rounded-full bg-rose-100 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 flex items-center justify-center mx-auto">
+              <Trash2 size={20} />
+            </div>
+            <h3 className="font-display font-black text-slate-900 dark:text-slate-100 text-base text-center">
+              Hapus Data Lokasi Permanen?
+            </h3>
+            <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed text-center">
+              Apakah Anda yakin ingin menghapus <strong>"{confirmingDeleteLoc.name}"</strong> secara permanen dari database maps Explore Pacitan?
+            </p>
+            <div className="flex justify-end gap-2 text-xs pt-1">
+              <button
+                type="button"
+                onClick={() => setConfirmingDeleteLoc(null)}
+                className="px-3.5 py-2 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-xl text-slate-600 dark:text-slate-300 font-bold cursor-pointer"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (onDeleteLocation) {
+                    onDeleteLocation(confirmingDeleteLoc.id);
+                  }
+                  setConfirmingDeleteLoc(null);
+                }}
+                className="py-2 px-4 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold cursor-pointer shadow-md shadow-rose-600/20 flex items-center gap-1.5"
+              >
+                <Trash2 size={13} />
+                Ya, Hapus Permanen
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="flex items-center gap-1.5 text-xs text-slate-500 font-medium">
         <Link to="/admin" className="hover:text-teal-700">SLA Dashboard</Link>
         <ChevronRight size={12} />
         <span className="text-slate-600">Daftar Obyek</span>
       </div>
 
-      <div className="bg-white p-5 rounded-2xl border border-slate-205 flex justify-between items-center">
+      <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row justify-between sm:items-center gap-3">
         <div>
-          <h2 className="font-display font-black text-slate-900 text-xl">🏬 Master Data Lokasi Aktif</h2>
-          <p className="text-slate-500 text-xs">Tangguhkan sementara obyek wisata bermasalah atau aktifkan kembali secara instan.</p>
+          <h2 className="font-display font-black text-slate-900 dark:text-slate-100 text-xl">🏬 Master Data Lokasi Maps</h2>
+          <p className="text-slate-500 dark:text-slate-400 text-xs">Kelola ketersediaan, edit data, hapus destinasi atau sinkronkan data ke Google Sheets.</p>
         </div>
-        <span className="text-xs bg-teal-50 border border-teal-200 text-teal-800 px-3 py-1 rounded-full font-bold font-mono">
-          Total Aktif: {locations.filter(l => l.status === "approved").length} obyek
-        </span>
+        <div className="flex items-center gap-2">
+          {onOpenSheetsModal && (
+            <button
+              onClick={onOpenSheetsModal}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-3.5 py-2 rounded-xl transition flex items-center gap-2 shadow-xs cursor-pointer"
+              title="Buka Sinkronisasi Database Google Sheets"
+            >
+              <FileSpreadsheet size={15} />
+              <span>Sync Google Sheets</span>
+            </button>
+          )}
+          <span className="text-xs bg-teal-50 dark:bg-teal-950/60 border border-teal-200 dark:border-teal-800 text-teal-800 dark:text-teal-300 px-3 py-1.5 rounded-xl font-bold font-mono">
+            Total: {locations.length} obyek ({locations.filter(l => l.status === "approved").length} aktif)
+          </span>
+        </div>
       </div>
 
-      <div className="bg-white border rounded-2xl overflow-hidden divide-y divide-slate-100 p-2 sm:p-4">
-        {locations.map((loc) => {
-          const isApproved = loc.status === "approved";
+      {/* Form Pencarian & Filter Admin */}
+      <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 grid grid-cols-1 sm:grid-cols-12 gap-3">
+        <div className="sm:col-span-8 relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+          <input
+            type="text"
+            value={adminSearch}
+            onChange={(e) => setAdminSearch(e.target.value)}
+            placeholder="Cari lokasi berdasarkan nama atau alamat..."
+            className="w-full pl-9 pr-8 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs sm:text-sm focus:outline-none focus:border-teal-600 font-medium"
+          />
+          {adminSearch && (
+            <button
+              onClick={() => setAdminSearch("")}
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+            >
+              <X size={14} />
+            </button>
+          )}
+        </div>
+        <div className="sm:col-span-4">
+          <select
+            value={adminCategory}
+            onChange={(e) => setAdminCategory(e.target.value)}
+            className="w-full py-2 px-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs sm:text-sm font-bold text-slate-700 dark:text-slate-200 focus:outline-none focus:border-teal-600 cursor-pointer"
+          >
+            <option value="semua">Semua Kategori ({locations.length})</option>
+            <option value="wisata">🏝️ Wisata ({locations.filter(l => l.category === 'wisata').length})</option>
+            <option value="penginapan">🏨 Penginapan ({locations.filter(l => l.category === 'penginapan').length})</option>
+            <option value="makan">🍲 Makan ({locations.filter(l => l.category === 'makan').length})</option>
+            <option value="coffeeshop">☕ Kafe ({locations.filter(l => l.category === 'coffeeshop').length})</option>
+            <option value="belanja">🛍️ Belanja ({locations.filter(l => l.category === 'belanja').length})</option>
+            <option value="lainnya">📍 Lainnya ({locations.filter(l => l.category === 'lainnya').length})</option>
+          </select>
+        </div>
+      </div>
 
-          return (
-            <div key={loc.id} className="p-4 flex flex-col sm:flex-row justify-between sm:items-center gap-4">
-              <div className="flex gap-3.5 items-center">
-                <img src={getDirectImageUrl(loc.photos?.[0])} alt={loc.name} className="w-12 h-12 rounded-lg object-cover border" referrerPolicy="no-referrer" />
-                <div>
-                  <div className="flex items-center gap-1.5">
-                    <h4 className="font-bold text-slate-800 text-sm">{loc.name}</h4>
-                    <span className={`px-1.5 py-0.2 rounded text-[7px] font-mono tracking-wider font-bold uppercase ${CATEGORY_COLORS[loc.category]}`}>
-                      {loc.category}
-                    </span>
+      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden divide-y divide-slate-100 dark:divide-slate-800 p-2 sm:p-4">
+        {filteredAdminLocations.length === 0 ? (
+          <div className="text-center py-12 text-slate-400 text-xs italic">
+            Tidak ada destinasi wisata yang cocok dengan pencarian "{adminSearch}".
+          </div>
+        ) : (
+          filteredAdminLocations.map((loc) => {
+            const isApproved = loc.status === "approved";
+
+            return (
+              <div key={loc.id} className="p-4 flex flex-col sm:flex-row justify-between sm:items-center gap-4">
+                <div className="flex gap-3.5 items-center">
+                  <img src={getDirectImageUrl(loc.photos?.[0])} alt={loc.name} className="w-12 h-12 rounded-lg object-cover border border-slate-200 dark:border-slate-700" referrerPolicy="no-referrer" />
+                  <div>
+                    <div className="flex items-center gap-1.5">
+                      <h4 className="font-bold text-slate-800 dark:text-slate-200 text-sm">{loc.name}</h4>
+                      <span className={`px-1.5 py-0.2 rounded text-[7px] font-mono tracking-wider font-bold uppercase ${CATEGORY_COLORS[loc.category]}`}>
+                        {loc.category}
+                      </span>
+                    </div>
+                    <span className="text-[10px] text-slate-400 font-sans">📍 {loc.address}</span>
                   </div>
-                  <span className="text-[10px] text-slate-400 font-sans">📍 {loc.address}</span>
+                </div>
+
+                <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+                  <span className={`px-2 py-0.5 rounded text-[9px] font-mono font-bold uppercase tracking-wider ${
+                    isApproved ? 'bg-emerald-50 text-emerald-800 border border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800' : 'bg-slate-150 text-slate-500 border border-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700'
+                  }`}>
+                    {isApproved ? "Approved (Live)" : "Inactive (Tangguh)"}
+                  </span>
+
+                  <button
+                    type="button"
+                    onClick={() => navigate(`/dashboard/submit?editId=${loc.id}`)}
+                    className="text-xs font-bold tracking-wider px-3 py-1.5 rounded-lg bg-teal-600 hover:bg-teal-700 text-white transition shadow-xs cursor-pointer flex items-center gap-1"
+                  >
+                    <Edit3 size={12} /> Edit
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const nextMode = !isApproved;
+                      setConfirmingLoc({ id: loc.id, name: loc.name, nextMode });
+                    }}
+                    className={`text-xs font-bold tracking-wider px-3 py-1.5 rounded-lg transition shadow-xs cursor-pointer ${
+                      isApproved 
+                        ? "bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 dark:bg-amber-950/40 dark:hover:bg-amber-900/30 dark:border-amber-900/50 dark:text-amber-300 font-bold" 
+                        : "bg-emerald-600 text-white hover:bg-emerald-700 font-bold"
+                    }`}
+                  >
+                    {isApproved ? "Tangguhkan" : "Aktifkan"}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setConfirmingDeleteLoc({ id: loc.id, name: loc.name })}
+                    className="text-xs font-bold tracking-wider px-2.5 py-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 dark:bg-rose-950/40 dark:hover:bg-rose-900/30 dark:border-rose-900/50 dark:text-rose-400 transition cursor-pointer flex items-center gap-1"
+                    title="Hapus data destinasi ini secara permanen"
+                  >
+                    <Trash2 size={12} /> Hapus
+                  </button>
                 </div>
               </div>
-
-              <div className="flex items-center gap-2">
-                <span className={`px-2 py-0.5 rounded text-[9px] font-mono font-bold uppercase tracking-wider ${
-                  isApproved ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' : 'bg-slate-150 text-slate-500 border border-slate-200'
-                }`}>
-                  {isApproved ? "Approved (Live)" : "Inactive (Tangguh)"}
-                </span>
-
-                <button
-                  onClick={() => navigate(`/dashboard/submit?editId=${loc.id}`)}
-                  className="text-xs font-bold tracking-wider px-3 py-1.5 rounded-lg bg-teal-600 hover:bg-teal-700 text-white transition shadow-xs cursor-pointer flex items-center gap-1"
-                >
-                  <Edit3 size={12} /> Edit
-                </button>
-
-                <button
-                  onClick={() => {
-                    const nextMode = !isApproved;
-                    setConfirmingLoc({ id: loc.id, name: loc.name, nextMode });
-                  }}
-                  className={`text-xs font-bold tracking-wider px-3 py-1.5 rounded-lg transition shadow-xs cursor-pointer ${
-                    isApproved 
-                      ? "bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 dark:bg-red-950/40 dark:hover:bg-red-900/30 dark:border-red-900/50 dark:text-red-400 font-bold" 
-                      : "bg-emerald-600 text-white hover:bg-emerald-700 font-bold"
-                  }`}
-                >
-                  {isApproved ? "Nonaktifkan" : "Aktifkan"}
-                </button>
-              </div>
-            </div>
-          );
-        })}
+            );
+          })
+        )}
       </div>
     </div>
   );

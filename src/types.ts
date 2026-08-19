@@ -38,6 +38,23 @@ export interface Location {
   openingHours?: string;
   priceRange?: string; // e.g. "Rp 5.000 - Rp 15.000"
   contact?: string; // e.g. "+62812345678"
+  
+  // Google Maps Extended Data
+  googlePlaceId?: string; // Menyimpan ID Unik Google Maps (ChIJ...)
+  website?: string;
+  googleMapsUrl?: string;
+  facilities?: string[]; // e.g. ["Restroom", "Restaurant", "Wheelchair accessible"]
+  
+  // New fields from latest spreadsheet format
+  plusCode?: string;
+  socialMedia?: string;
+  statusBuka?: string;
+  cid?: string;
+  usefulInfo?: string;
+  knowledgeGraphId?: string;
+  topReviews?: string[];
+  validasiAiStatus?: string;
+  validasiNotes?: string;
 }
 
 export type SubmissionStatus = "pending" | "approved" | "rejected" | "revision_requested";
@@ -61,6 +78,10 @@ export interface LocationSubmission {
     openingHours?: string;
     priceRange?: string;
     contact?: string;
+    googlePlaceId?: string;
+    website?: string;
+    googleMapsUrl?: string;
+    facilities?: string[];
   };
   submittedBy: string; // userId
   submittedByName: string;
